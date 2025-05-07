@@ -1,0 +1,125 @@
+  async create(createRecordDto: CreateRecordDto, files: { front: Express.Multer.File; back: Express.Multer.File }, req: any) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+
+      //Validacion Distancia con el Radio del Proyecto
+      if (!project) {
+        throw new NotFoundException('El proyecto especificado no existe.');
+      }
+      const project = await this.prisma.project.findUnique({
+        where: { id: createRecordDto.projectId },
+        select: {
+          latitude: true,
+          longitude: true,
+          radius: true, // en kilómetros
+        },
+      });
+
+      if (!project.latitude || !project.longitude) {
+        throw new BadRequestException('Las coordenadas del proyecto no están definidas.');
+      }
+      if (!createRecordDto.latitude || !createRecordDto.longitude) {
+        throw new BadRequestException('Las coordenadas del registro no están definidas.');
+      }
+      const distance = this.haversineDistance(
+        parseFloat(project.latitude),
+        parseFloat(project.longitude),
+        parseFloat(createRecordDto.latitude),
+        parseFloat(createRecordDto.longitude)
+      );
+
+      let latitudeToSave = createRecordDto.latitude || project.latitude||0;
+      let longitudeToSave = createRecordDto.longitude || project.longitude||0;
+
+      if (distance > parseFloat(project.radius)) {
+        latitudeToSave = project.latitude;
+        longitudeToSave = project.longitude;
+      }
+
+      //Validacion Imagenes para definir urlfront y urlback
+      let image_urlfront: string | undefined = undefined;
+      let image_urlback: string | undefined = undefined;
+      const uploadFolderPath = path.join(__dirname, '..', '..', 'uploads', 'records');
+
+      // Validacion de carpeta existente
+      if (!fs.existsSync(uploadFolderPath)) {
+        fs.mkdirSync(uploadFolderPath, { recursive: true });
+      }
+
+      //Nombres unicos
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+      //Proceso de url de front y validacion de si existe
+      if (files.front) {
+        const frontFileName = `${uniqueSuffix}-front-${files.front.originalname}`;
+        const frontFilePath = path.join(uploadFolderPath, frontFileName);
+        try {
+          fs.writeFileSync(frontFilePath, files.front.buffer);
+        } catch (error) {
+          throw new BadRequestException(`Error al guardar la imagen frontal: ${error.message}`);
+        }
+        image_urlfront = `${baseUrl}/uploads/records/${frontFileName}`;
+      }
+
+      //Proceso de url de back y validacion de si existe
+      if (files.back) {
+        const backFileName = `${uniqueSuffix}-back-${files.back.originalname}`;
+        const backFilePath = path.join(uploadFolderPath, backFileName);
+        try {
+          fs.writeFileSync(backFilePath, files.back.buffer);
+        } catch (error) {
+          throw new BadRequestException(`Error al guardar la imagen trasera: ${error.message}`);
+        }
+        image_urlback = `${baseUrl}/uploads/records/${backFileName}`;
+      }
+
+      console.log('entro aca');
+      const dataCreated = await this.prisma.record.create({
+        data: {
+          userId: createRecordDto.userId,
+          projectId: createRecordDto.projectId,
+          categoryId: createRecordDto.categoryId,
+          area: createRecordDto.area,
+          type: createRecordDto.type,
+          worker_fullname: createRecordDto.worker_fullname,
+          worker_id_number: createRecordDto.worker_id_number,
+          description: createRecordDto.description,
+          actions: createRecordDto.actions,
+          suggestions: createRecordDto.suggestions,
+          boss_title: createRecordDto.boss_title,
+          boss_signature: createRecordDto.boss_signature,
+          boss_fullname: createRecordDto.boss_fullname,
+          photo_flag: createRecordDto.photo_flag,
+          url_front: image_urlfront,
+          url_back: image_urlback,
+          completed: createRecordDto.completed,
+          uuid: createRecordDto.uuid,
+          flag: createRecordDto.flag,
+          latitude: latitudeToSave,
+          longitude: longitudeToSave,
+        },
+      });
+
+      if (createRecordDto.risks?.length > 0) {
+        const obj: any = {
+          recordsId: [dataCreated.id],
+          risksId: createRecordDto.risks,
+        };
+        await this.assingRisks(obj);
+      }
+
+      this.resp.message = 'Registro creado exitosamente';
+      this.resp.data = dataCreated;
+
+    } catch (error) {
+      console.log(error);
+      this.resp.statusCode = 400;
+      this.resp.message = error?.message || 'Error al crear registro';
+      this.resp.error = true;
+    }
+    return this.resp;
+  }

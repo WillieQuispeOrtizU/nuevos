@@ -1,0 +1,48 @@
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Header, Res, StreamableFile } from '@nestjs/common';
+import { RecordService } from './record.service';
+import { CreateRecordDto } from './dto/create-record.dto';
+import { UpdateRecordDto } from './dto/update-record.dto';
+import { PaginationDto } from 'src/common/dto/pagination.interface';
+import { FilesInterceptor } from '@nestjs/platform-express';
+
+@Controller('record')
+export class RecordController {
+  constructor(private readonly recordService: RecordService) { }
+
+  @Post()
+  @UseInterceptors(FilesInterceptor('files', 2),)
+  async create(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() createRecordDto: CreateRecordDto,
+    @Req() req: any,
+  ) {
+    // Asegúrate de que los archivos se pasen correctamente como "front" y "back"
+    const [front, back] = files;
+    return this.recordService.create(createRecordDto, { front, back }, req);
+  }
+
+  @Get()
+  findAll(@Query() paginationDto: PaginationDto) {
+    return this.recordService.findAll(paginationDto);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() UpdateRecordDto: UpdateRecordDto) {
+    return this.recordService.update(+id, UpdateRecordDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.recordService.remove(+id);
+  }
+
+  @Get('/excel')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @Header('Content-Disposition', 'attachment; filename="records.xlsx"')
+  async downloadExcelByProject(
+    @Query() paginationDto: PaginationDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    return this.recordService.downloadExcel(paginationDto);
+  }
+}

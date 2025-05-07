@@ -1,0 +1,49 @@
+async getAssignedProjects(userId: number) {
+  try {
+    this.resp.data = {};
+    this.resp.error = false;
+    this.resp.statusCode = 200;
+
+    // Busca los proyectos asignados al usuario especificado
+    const assignedProjects = await this.prisma.project_user.findMany({
+      where: {
+        userId: userId,
+        deleted_at: null, // Solo proyectos activos
+        project: {
+          deleted_at: null, // Solo proyectos no eliminados
+        },
+      },
+      select: {
+        project: {
+          select: {
+            id: true,
+            name: true, // Devuelve el ID y el nombre del proyecto
+          },
+        },
+      },
+    });
+
+    // Formato de respuesta: lista de proyectos
+    const projects = assignedProjects.map((item) => ({
+      id: item.project.id,
+      name: item.project.name,
+    }));
+
+    this.resp.message = 'Proyectos asignados encontrados';
+    this.resp.data = { projects };
+  } catch (e) {
+    console.error('Error en getAssignedProjects:', e);
+    this.resp.statusCode = 500;
+    this.resp.message = 'Error al obtener los proyectos asignados';
+    this.resp.error = true;
+  }
+
+  return this.resp;
+}
+
+
+/////////////*********************////////////////////////////////
+@Get('assigned-projects/:userId')
+async getAssignedProjects(@Param('userId') userId: number) {
+  return this.userService.getAssignedProjects(userId);
+}
