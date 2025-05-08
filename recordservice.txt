@@ -1,14 +1,38 @@
-  async create(createRecordDto: CreateRecordDto, files: { front: Express.Multer.File; back: Express.Multer.File }, req: any) {
+/* eslint-disable */
+import { BadRequestException, Injectable, NotFoundException, StreamableFile } from '@nestjs/common';
+import { CreateRecordDto } from './dto/create-record.dto';
+import { UpdateRecordDto } from './dto/update-record.dto';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+import { PrismaService } from 'src/prisma.service';
+import { GlobalFunctions } from 'src/common/functions/global-function';
+import { PaginationDto } from 'src/common/dto/pagination.interface';
+import { Workbook } from 'exceljs';
+import * as tmp from 'tmp';
+import * as fs from 'fs';
+import * as path from 'path';
+import { tmpdir } from 'os';
+import { createReadStream } from 'fs';
+
+@Injectable()
+export class RecordService {
+  constructor(
+    private readonly globalFunctions: GlobalFunctions,
+    private prisma: PrismaService,
+  ) { }
+
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  };
+
+  async create(createRecordDto: CreateRecordDto) {
     try {
       this.resp.data = {};
       this.resp.error = false;
       this.resp.statusCode = 200;
 
-
-      //Validacion Distancia con el Radio del Proyecto
-      if (!project) {
-        throw new NotFoundException('El proyecto especificado no existe.');
-      }
       const project = await this.prisma.project.findUnique({
         where: { id: createRecordDto.projectId },
         select: {
@@ -17,13 +41,6 @@
           radius: true, // en kilómetros
         },
       });
-
-      if (!project.latitude || !project.longitude) {
-        throw new BadRequestException('Las coordenadas del proyecto no están definidas.');
-      }
-      if (!createRecordDto.latitude || !createRecordDto.longitude) {
-        throw new BadRequestException('Las coordenadas del registro no están definidas.');
-      }
       const distance = this.haversineDistance(
         parseFloat(project.latitude),
         parseFloat(project.longitude),
@@ -31,50 +48,12 @@
         parseFloat(createRecordDto.longitude)
       );
 
-      let latitudeToSave = createRecordDto.latitude || project.latitude||0;
-      let longitudeToSave = createRecordDto.longitude || project.longitude||0;
+      let latitudeToSave = createRecordDto.latitude;
+      let longitudeToSave = createRecordDto.longitude;
 
       if (distance > parseFloat(project.radius)) {
         latitudeToSave = project.latitude;
         longitudeToSave = project.longitude;
-      }
-
-      //Validacion Imagenes para definir urlfront y urlback
-      let image_urlfront: string | undefined = undefined;
-      let image_urlback: string | undefined = undefined;
-      const uploadFolderPath = path.join(__dirname, '..', '..', 'uploads', 'records');
-
-      // Validacion de carpeta existente
-      if (!fs.existsSync(uploadFolderPath)) {
-        fs.mkdirSync(uploadFolderPath, { recursive: true });
-      }
-
-      //Nombres unicos
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-      //Proceso de url de front y validacion de si existe
-      if (files.front) {
-        const frontFileName = `${uniqueSuffix}-front-${files.front.originalname}`;
-        const frontFilePath = path.join(uploadFolderPath, frontFileName);
-        try {
-          fs.writeFileSync(frontFilePath, files.front.buffer);
-        } catch (error) {
-          throw new BadRequestException(`Error al guardar la imagen frontal: ${error.message}`);
-        }
-        image_urlfront = `${baseUrl}/uploads/records/${frontFileName}`;
-      }
-
-      //Proceso de url de back y validacion de si existe
-      if (files.back) {
-        const backFileName = `${uniqueSuffix}-back-${files.back.originalname}`;
-        const backFilePath = path.join(uploadFolderPath, backFileName);
-        try {
-          fs.writeFileSync(backFilePath, files.back.buffer);
-        } catch (error) {
-          throw new BadRequestException(`Error al guardar la imagen trasera: ${error.message}`);
-        }
-        image_urlback = `${baseUrl}/uploads/records/${backFileName}`;
       }
 
       console.log('entro aca');
@@ -94,8 +73,8 @@
           boss_signature: createRecordDto.boss_signature,
           boss_fullname: createRecordDto.boss_fullname,
           photo_flag: createRecordDto.photo_flag,
-          url_front: image_urlfront,
-          url_back: image_urlback,
+          url_front: createRecordDto.url_front,
+          url_back: createRecordDto.url_back,
           completed: createRecordDto.completed,
           uuid: createRecordDto.uuid,
           flag: createRecordDto.flag,
@@ -104,7 +83,7 @@
         },
       });
 
-      if (createRecordDto.risks?.length > 0) {
+      if (createRecordDto.risks.length > 0) {
         const obj: any = {
           recordsId: [dataCreated.id],
           risksId: createRecordDto.risks,
@@ -123,3 +102,622 @@
     }
     return this.resp;
   }
+
+
+  haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radio de la Tierra en km
+    const toRad = (value: number) => (value * Math.PI) / 180;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  async uploadPhotos(id: number, files: { front?: Express.Multer.File; back?: Express.Multer.File }, req: any) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+  
+      const record = await this.prisma.record.findUnique({ where: { id: id, deleted_at: null } });
+      if (!record) throw new NotFoundException(`Registro con ID ${id} no encontrado.`);
+  
+      let image_urlfront: string | undefined = record.url_front;
+      let image_urlback: string | undefined = record.url_back;
+      const uploadFolderPath = path.join(__dirname, '..', '..', 'uploads', 'records');
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+  
+      // Depuración de la imagen frontal
+      console.log('uploadPhotos - files.front:', files.front);
+      if (files.front) {
+        console.log('uploadPhotos - files.front.originalname:', files.front.originalname);
+        const frontFileName = `${uniqueSuffix}-front-${files.front.originalname}`;
+        console.log('uploadPhotos - frontFileName:', frontFileName);
+        console.log('uploadPhotos - uploadFolderPath:', uploadFolderPath);
+        const frontFilePath = path.join(uploadFolderPath, frontFileName);
+        console.log('uploadPhotos - frontFilePath:', frontFilePath);
+        console.log('uploadPhotos - files.front.buffer:', files.front.buffer);
+        try {
+          fs.writeFileSync(frontFilePath, files.front.buffer);
+          console.log('uploadPhotos - baseUrl:', baseUrl);
+          const tempFrontUrlParts = [`${baseUrl}/uploads/records`, frontFileName];
+          console.log('uploadPhotos - tempFrontUrlParts:', tempFrontUrlParts);
+          image_urlfront = tempFrontUrlParts.join('/'); // Aunque no es .join() directamente en undefined, inspeccionamos los componentes
+          console.log('uploadPhotos - image_urlfront:', image_urlfront);
+        } catch (error) {
+          console.error('uploadPhotos - Error al guardar imagen frontal:', error);
+          throw new BadRequestException(`Error al guardar la imagen frontal: ${error.message}`);
+        }
+      }
+  
+      // Depuración de la imagen trasera
+      console.log('uploadPhotos - files.back:', files.back);
+      if (files.back) {
+        console.log('uploadPhotos - files.back.originalname:', files.back.originalname);
+        const backFileName = `${uniqueSuffix}-back-${files.back.originalname}`;
+        console.log('uploadPhotos - backFileName:', backFileName);
+        console.log('uploadPhotos - uploadFolderPath:', uploadFolderPath);
+        const backFilePath = path.join(uploadFolderPath, backFileName);
+        console.log('uploadPhotos - backFilePath:', backFilePath);
+        console.log('uploadPhotos - files.back.buffer:', files.back.buffer);
+        try {
+          fs.writeFileSync(backFilePath, files.back.buffer);
+          console.log('uploadPhotos - baseUrl:', baseUrl);
+          const tempBackUrlParts = [`${baseUrl}/uploads/records`, backFileName];
+          console.log('uploadPhotos - tempBackUrlParts:', tempBackUrlParts);
+          image_urlback = tempBackUrlParts.join('/'); // Inspeccionamos los componentes
+          console.log('uploadPhotos - image_urlback:', image_urlback);
+        } catch (error) {
+          console.error('uploadPhotos - Error al guardar imagen trasera:', error);
+          throw new BadRequestException(`Error al guardar la imagen trasera: ${error.message}`);
+        }
+      }
+  
+      const updatedRecord = await this.prisma.record.update({
+        where: { id: id },
+        data: { url_front: image_urlfront, url_back: image_urlback, updated_at: new Date() },
+      });
+  
+      this.resp.message = 'Fotos del registro actualizadas exitosamente';
+      this.resp.data = updatedRecord;
+  
+    } catch (error) {
+      console.error('uploadPhotos - Error general:', error);
+      this.resp.statusCode = 500;
+      this.resp.message = error?.message || 'Error al subir las fotos del registro';
+      this.resp.error = true;
+    }
+    return this.resp;
+  }
+
+  async assingRisks(createRecordDto: any) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      const dataToSave: any = [];
+      const { recordsId = [], risksId = [] } = createRecordDto;
+      console.log('create', createRecordDto);
+      await Promise.all(
+        recordsId.map(async (element) => {
+          const recordId = element;
+          const currGroups = await this.prisma.record_risk.findMany({
+            where: {
+              recordId: recordId,
+              deleted_at: null,
+            },
+            select: {
+              id: true,
+              riskId: true,
+            },
+          });
+
+          if (currGroups.length > 0) {
+            for (const element of currGroups) {
+              const currId = element.riskId;
+              const stayId = risksId.includes(currId);
+
+              if (!stayId) {
+                // Eliminar
+                await this.prisma.record_risk.update({
+                  where: {
+                    id: element.id,
+                  },
+                  data: {
+                    deleted_at: new Date(),
+                  },
+                });
+              }
+            }
+          }
+
+          for (const riskId of risksId) {
+            const groupRecord = await this.prisma.record_risk.findFirst({
+              where: {
+                riskId: riskId,  // ✅ Usa el ID directamente
+                recordId,
+                deleted_at: null,
+              },
+            });
+
+            if (groupRecord == null) {
+              const item: Record<string, any> = {};
+              item.riskId = riskId;
+              item.recordId = recordId;
+              item.updated_at = new Date();
+              dataToSave.push(item);
+            }
+          }
+        }),
+      );
+      console.log('dataToSave', dataToSave);
+      if (dataToSave.length > 0) {
+        const result = await this.prisma.record_risk.createMany({
+          data: dataToSave,
+        });
+      }
+      const riskRecordUpdate = await this.prisma.record_risk.updateMany({
+        where: {
+          id: {
+            in: recordsId,
+          },
+        },
+        data: {
+          updated_at: new Date(),
+        },
+      });
+
+      this.resp.data = dataToSave;
+      this.resp.message = 'asignacion Exitosa';
+    } catch (error) {
+      console.log(error);
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(error);
+    }
+
+    return this.resp;
+  }
+
+
+  async findAll(paginationDto: PaginationDto) {
+    try {
+
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const {
+        page = 1,
+        limit = 10,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const offset = await this.globalFunctions.getOffsetByPage(page, limit);
+
+      // Contar cuántos hay
+      const data = await this.prisma.record.aggregate({
+        _count: {
+          id: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+      });
+
+      const { _count } = data;
+      const pages = await this.globalFunctions.getCantPages(_count.id, limit);
+      const responseFilter = await this.globalFunctions.getResponseFilter(
+        limit,
+        order,
+        page,
+        sort,
+        pages,
+        _count.id,
+      );
+
+
+      const rows = await this.prisma.record.findMany({
+        select: {
+          id: true,
+          actions: true,
+          flag: true,
+          user: {
+            where: {
+              deleted_at: null,
+            },
+            select: {
+              id: true,
+              fullname: true,
+              document: true,
+            }
+          },
+          project: {
+            where: {
+              deleted_at: null,
+            },
+            select: {
+              id: true,
+              name: true,
+            }
+          },
+          category: {
+            where: {
+              deleted_at: null,
+            },
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          area: true,
+          type: true,
+          worker_fullname: true,
+          worker_id_number: true,
+          description: true,
+          suggestions: true,
+          boss_title: true,
+          boss_signature: true,
+          boss_fullname: true,
+          photo_flag: true,
+          url_front: true,
+          url_back: true,
+          completed: true,
+          uuid: true,
+          latitude: true,
+          longitude: true,
+          record_risk: {
+            where: {
+              deleted_at: null,
+              risk: {
+                deleted_at: null
+              }
+            },
+            select: {
+              id: true,
+              risk: {
+                select: {
+                  name: true,
+                  id: true
+                }
+              }
+            }
+          },
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+        skip: offset,
+        take: objectFilter.cant,
+        orderBy: objectFilter.order,
+      })
+      this.resp.message = "Riesgos encontrados";
+      this.resp.data = {
+        rows,
+        responseFilter,
+      };
+    } catch (e) {
+      console.log({ error: e });
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+      this.resp.statusCode = 400;
+    }
+    return this.resp
+  }
+
+  async update(id: number, UpdateRecordDto: UpdateRecordDto) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      // Obtener registro con sus riesgos actuales
+      const recordExist = await this.prisma.record.findFirst({
+        where: { id, deleted_at: null },
+        include: {
+          record_risk: {
+            where: { deleted_at: null },
+            include: { risk: true }
+          },
+          user: true,
+          project: true,
+          category: true,
+        }
+      });
+
+      if (!recordExist) {
+        this.resp.statusCode = 404;
+        this.resp.message = 'Registro no encontrado';
+        this.resp.error = true;
+        return this.resp;
+      }
+
+      const { risks, ...recordData } = UpdateRecordDto;
+
+      // 1. Actualizar datos básicos del usuario
+      const updatedRecord = await this.prisma.record.update({
+        where: { id },
+        data: {
+          ...recordData,
+          updated_at: new Date(),
+        },
+        include: {
+        }
+      });
+
+      // 2. Manejo de riesgos (con soft delete)
+      let riskAction = 'Sin cambios en riesgos';
+
+      if (risks) {
+        if (risks.length === 0) {
+          // Soft delete de todos los riesgos del usuario
+          const existingRisks = await this.prisma.record_risk.findMany({
+            where: { recordId: id, deleted_at: null }
+          });
+
+          if (existingRisks.length > 0) {
+            await this.prisma.record_risk.updateMany({
+              where: {
+                id: {
+                  in: existingRisks.map(p => p.id)
+                }
+              },
+              data: { deleted_at: new Date() }
+            });
+          }
+
+          riskAction = 'Todos los riesgos fueron eliminados (soft delete)';
+        } else {
+          // Lógica para actualizar riesgos CON PERMISOS DE TODOS
+          await this.prisma.record_risk.updateMany({
+            where: { recordId: id, deleted_at: null },
+            data: { deleted_at: new Date() }
+          });
+
+          const obj = {
+            recordsId: [id],
+            risksId: risks.map(r => r.id)
+          };
+          await this.assingRisks(obj);
+          riskAction = 'Riesgos actualizados';
+        }
+      }
+
+      // Obtener datos actualizados para la respuesta
+      const recordWithRisks = await this.prisma.record.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullname: true,
+              document: true,
+            }
+          },
+          category: {
+            select: {
+              id: true,
+              name: true,
+            }
+          },
+          project: {
+            select: {
+              id: true,
+              name: true,
+            }
+          },
+          record_risk: {
+            where: { deleted_at: null },
+            select: {
+              id: true,
+              risk: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      this.resp.message = `Registro actualizado. ${riskAction}`;
+      this.resp.data = recordWithRisks;
+
+    } catch (error) {
+      console.error('Error actualizando registro:', error);
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error interno del servidor';
+      this.resp.error = true;
+    }
+
+    return this.resp;
+  }
+  async remove(id: number) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const record = await this.prisma.record.update({
+        where: {
+          id: id,
+        },
+        data: {
+          deleted_at: new Date(),
+        },
+      });
+
+      const risks = await this.prisma.record_risk.findMany({
+        where: {
+          recordId: id
+        }
+      })
+
+      if (risks.length > 0 && risks) {
+        const delete_groups = await this.prisma.record_risk.updateMany({
+          where: {
+            id: {
+              in: risks.map((el) => el.id),
+            },
+          },
+          data: {
+            deleted_at: new Date(),
+          },
+        });
+      }
+      this.resp.message = 'Registro eliminado';
+      this.resp.data = {};
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async downloadExcel(paginationDto: PaginationDto): Promise<StreamableFile> {
+    var {
+      page = 1,
+      limit = 1000000, // Para descargar todos los registros, establece limit en 0 o un valor muy grande
+      order = 'desc',
+      sort = 'id',
+      filter = '[]',
+    } = paginationDto;
+
+    const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+      sort,
+      order,
+      page,
+      limit,
+      filter,
+    );
+
+    const offset = await this.globalFunctions.getOffsetByPage(page, limit);
+    const whereClause: any = {
+      deleted_at: null,
+      AND: objectFilter.contains,
+    };
+
+    const data = await this.prisma.record.aggregate({
+      _count: {
+        id: true,
+      },
+      where: whereClause,
+    });
+
+    const { _count } = data;
+    const pages = await this.globalFunctions.getCantPages(_count.id, limit);
+    const responseFilter = await this.globalFunctions.getResponseFilter(
+      limit,
+      order,
+      page,
+      sort,
+      pages,
+      _count.id,
+    );
+
+    const objectSelect = {
+      id: true,
+      user: { select: { fullname: true } },
+      project: { select: { name: true } },
+      category: { select: { name: true } },
+      record_risk: {
+        where: { deleted_at: null },
+        select: { risk: { select: { name: true } } },
+      },
+      created_at: true,
+      type: true,
+      worker_fullname: true,
+    };
+
+    type RecordExcel = {
+      id?: number;
+      user?: { fullname?: string };
+      project?: { name?: string };
+      category?: { name?: string };
+      record_risk?: { risk?: { name?: string } }[];
+      created_at?: Date;
+      type?: string;
+      worker_fullname?: string,
+    };
+
+    let records: RecordExcel[] = [];
+    console.log('objectFilter exportar records', objectFilter);
+    records = await this.prisma.record.findMany({
+      where: whereClause,
+      skip: offset,
+      take: limit,
+      orderBy: objectFilter.order,
+      select: objectSelect,
+    });
+
+    if (!records) {
+      throw new NotFoundException('No hay registros');
+    }
+
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet('Records');
+
+    const headings = [];
+    headings.push('#', 'Usuario Reportado', 'Proyecto', 'Tipo', 'Categoría', 'Riesgos', 'Fecha', 'Hora', 'Usuario');
+
+
+    worksheet.addRow(headings);
+
+    let rowNumber = 1;
+    records.forEach((record) => {
+      const rowData = [
+        rowNumber++,
+        record.worker_fullname || '',
+        record.project?.name || '',
+        record.type || '',
+        record.category?.name || '',
+        record.record_risk.map((rr) => rr.risk.name).join(', ') || '',
+        record.created_at ? new Date(record.created_at).toLocaleDateString('es-ES') : '',
+        record.created_at ? new Date(record.created_at).toLocaleTimeString('es-ES') : '',
+        record.user?.fullname || '', // Repetimos el usuario al final como en el ejemplo de Laravel
+      ];
+      worksheet.addRow(rowData);
+    });
+
+    // Auto ajustar el ancho de las columnas
+    worksheet.columns.forEach((column) => {
+      column.width = 20; // Puedes ajustar este valor según necesites
+    });
+
+    // Create a temporary file
+    const tempFilePath = path.join(tmpdir(), `records${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tempFilePath);
+
+    // Create a readable stream of the file
+    const fileStream = createReadStream(tempFilePath);
+
+    // Return the streamable file with appropriate headers
+    return new StreamableFile(fileStream, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="records.xlsx"`,
+    });
+  }
+
+}

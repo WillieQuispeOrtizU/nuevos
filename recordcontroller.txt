@@ -1,24 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Header, Res, StreamableFile } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, UploadedFiles, Req } from '@nestjs/common';
 import { RecordService } from './record.service';
 import { CreateRecordDto } from './dto/create-record.dto';
 import { UpdateRecordDto } from './dto/update-record.dto';
 import { PaginationDto } from 'src/common/dto/pagination.interface';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
 @Controller('record')
 export class RecordController {
   constructor(private readonly recordService: RecordService) { }
 
   @Post()
-  @UseInterceptors(FilesInterceptor('files', 2),)
-  async create(
-    @UploadedFiles() files: Express.Multer.File[],
-    @Body() createRecordDto: CreateRecordDto,
-    @Req() req: any,
-  ) {
-    // Asegúrate de que los archivos se pasen correctamente como "front" y "back"
-    const [front, back] = files;
-    return this.recordService.create(createRecordDto, { front, back }, req);
+  create(@Body() createRecordDto: CreateRecordDto) {
+    return this.recordService.create(createRecordDto);
   }
 
   @Get()
@@ -35,14 +28,29 @@ export class RecordController {
   remove(@Param('id') id: string) {
     return this.recordService.remove(+id);
   }
-
-  @Get('/excel')
-  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-  @Header('Content-Disposition', 'attachment; filename="records.xlsx"')
-  async downloadExcelByProject(
-    @Query() paginationDto: PaginationDto,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<StreamableFile> {
-    return this.recordService.downloadExcel(paginationDto);
+  
+  @Patch(':id/upload-photos')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'front', maxCount: 1 },
+      { name: 'back', maxCount: 1 },
+    ]),
+  )
+  async uploadPhotos(
+    @Param('id') id: string,
+    @UploadedFiles()
+    files: {
+      front?: Express.Multer.File[];
+      back?: Express.Multer.File[];
+    },
+    @Req() req: Request,
+  ) {
+    const frontFile = files?.front?.[0];
+    const backFile = files?.back?.[0];
+    return this.recordService.uploadPhotos(
+      +id, // Convertir el string del parámetro a número
+      { front: frontFile, back: backFile },
+      req,
+    );
   }
 }
