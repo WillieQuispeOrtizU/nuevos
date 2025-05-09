@@ -1,0 +1,131 @@
+import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import { GeneralService } from './general.service';
+import { Request } from 'express';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+
+@Controller('general')
+export class GeneralController {
+  constructor(private generalService: GeneralService) {}
+
+  @UseGuards(JwtAuthGuard) // Asegura que el usuario está autenticado
+  @Get('offline-info')
+  async getOfflineInfo(@Req() req: Request) {
+    const userId = req.user['id']; // Obtener el ID del usuario autenticado
+    return this.generalService.getOfflineInfo(userId);
+  }
+}
+/////////////////////////////////////////////////////
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from 'src/prisma.service';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+
+@Injectable()
+export class GeneralService {
+  constructor(private prisma: PrismaService) {}
+
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  };
+
+  async getOfflineInfo(userId: number) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      // Obtener versión de la aplicación
+      const version = await this.prisma.appVersion.findFirst({
+        select: {
+          id: true,
+          android: true,
+          ios: true,
+        },
+        orderBy: { id: 'desc' },
+      });
+
+      // Obtener listado de empresas con proyectos
+      const enterprises = await this.prisma.enterprise.findMany({
+        select: {
+          id: true,
+          name: true,
+          ruc: true,
+          projects: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Obtener listado de categorías
+      const categories = await this.prisma.category.findMany({
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      // Obtener listado de riesgos
+      const risks = await this.prisma.risk.findMany({
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      // Obtener registros realizados por el usuario en los últimos 30 días
+      const from = new Date();
+      from.setDate(from.getDate() - 30);
+      const to = new Date();
+
+      const records = await this.prisma.record.findMany({
+        where: {
+          user_id: userId,
+          created_at: {
+            gte: from,
+            lte: to,
+          },
+        },
+        select: {
+          id: true,
+          project_id: true,
+          category_id: true,
+          type: true,
+          latitude: true,
+          longitude: true,
+          worker_fullname: true,
+          completed: true,
+          project: {
+            select: {
+              id: true,
+              name: true,
+              enterprise_id: true,
+            },
+          },
+        },
+        orderBy: { completed: 'desc' },
+      });
+
+      // Preparar respuesta
+      this.resp.message = 'Datos obtenidos exitosamente';
+      this.resp.data = {
+        version,
+        enterprises,
+        categories,
+        risks,
+        records,
+      };
+    } catch (e) {
+      console.error({ error: e });
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = e.message;
+    }
+
+    return this.resp;
+  }
+}

@@ -1,0 +1,95 @@
+import { Component, OnInit } from '@angular/core';
+import { LoadingService } from 'src/app/services/loading.service';
+import { RecordService } from 'src/app/services/record.service';
+import { NetworkService } from 'src/app/services/network.service';
+import { Enterprise, Project } from 'src/app/interfaces/general_offline';
+import { NavController } from '@ionic/angular';
+import { Router } from '@angular/router';
+
+@Component({
+    selector: 'app-pre-main',
+    templateUrl: './pre-main.page.html',
+    styleUrls: ['./pre-main.page.scss'],
+})
+export class PreMainPage implements OnInit {
+
+    enterprises: Enterprise[] = [];
+    projects: Project[] = [];
+    enterprise_id: any = "";
+    project_id: any = "";
+
+    constructor(
+        private loading: LoadingService,
+        private rs: RecordService,
+        private navCtrl: NavController,
+        private ip: NetworkService,
+        private router: Router
+    ) {}
+
+    ngOnInit() {}
+
+    ionViewDidEnter() {
+        if (this.ip.checkConnection()) {
+            this.getGeneralInformation();
+        } else {
+            this.enterprises = this.rs.enterprises;
+            this.projects = this.rs.projects;
+        }
+    }
+
+    getGeneralInformation(event?: any) {
+        this.loading.present();
+        this.rs.getGeneralInformation({})
+            .subscribe(
+                (data) => {
+                    this.loading.dismiss();
+                    if (event) {
+                        event.target.complete();
+                    }
+
+                    // Guardar datos offline
+                    this.rs.saveOfflineData(data);
+
+                    // Actualizar empresas y proyectos
+                    this.enterprises = this.rs.enterprises;
+                },
+                (err) => {
+                    this.loading.dismiss();
+                    if (event) {
+                        event.target.complete();
+                    }
+                    console.log(err);
+                }
+            );
+    }
+
+    doRefresh(event: any) {
+        if (this.ip.checkConnection()) {
+            this.getGeneralInformation(event);
+        } else {
+            console.log(this.rs.enterprises);
+        }
+    }
+
+    onChange(event: any) {
+        this.projects = [];
+        let i = -1;
+        this.enterprises.forEach((element, index) => {
+            if (element.id == this.enterprise_id) {
+                i = index;
+            }
+        });
+
+        if (i > -1) {
+            this.projects = this.enterprises[i].projects;
+        }
+    }
+
+    saveCurrectSelection() {
+        this.rs.enterprise_id = this.enterprise_id;
+        this.rs.project_id = this.project_id;
+        this.rs.saveData();
+
+        this.navCtrl.navigateRoot('main');
+    }
+}

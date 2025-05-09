@@ -1,0 +1,92 @@
+<?php
+
+namespace App\Http\Controllers\Apis;
+
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use App\Category;
+use App\Risk;
+use App\Record;
+use App\Enterprise;
+use App\AppVersion;
+
+class GeneralController extends Controller
+{
+    public function getOfflineInfo()
+    {
+        $user = request()->user();
+
+        // Obtener datos iniciales
+        $response = $this->getInitInfo($user);
+
+        return response()->json(
+            [
+                'error' => $response->error, 
+                'enterprises' => $response->enterprises,
+                'categories' => $response->categories,
+                'risks' => $response->risks, 
+                'records' => $response->records,
+                'version' => $response->version,
+            ],
+            200
+        );
+    }
+
+    public function getInitInfo($user)
+    {
+        // Obtener versión de la aplicación
+        $version = AppVersion::select('id', 'android', 'ios', 
+            DB::raw('"https://play.google.com/store/apps/details?id=maar.tarjeta.simplex" as link_android'), 
+            DB::raw('"https://apps.apple.com/pe/app/tarjeta-maar/id1488825292" as link_ios')
+        )->orderBy('id', 'desc')->first();
+
+        // Obtener listado de empresas con proyectos
+        $enterprises = Enterprise::select('id', 'name', 'ruc')
+            ->with([
+                'projects' => function($query) {
+                    $query->select('id', 'enterprise_id', 'name');
+                }
+            ])->get();
+
+        // Obtener categorías
+        $categories = Category::select('id', 'name')->get();
+
+        // Obtener riesgos
+        $risks = Risk::select('id', 'name')->get();
+
+        // Obtener registros realizados en los últimos 30 días
+        $from = date('Y-m-d 00:00:00', strtotime('-30 days'));
+        $to = date('Y-m-d 23:59:00');
+        $records = Record::where('user_id', $user->id)
+            ->select(
+                'id',
+                'project_id',
+                'category_id',
+                'type',
+                'latitude',
+                'longitude',
+                'worker_fullname',
+                'completed',
+                DB::raw('(DATE_FORMAT(completed, "%d/%m/%Y %h:%i %p")) as date_info')
+            )
+            ->with([
+                'project' => function($query) {
+                    $query->select('id', 'enterprise_id', 'name');
+                }
+            ])
+            ->whereBetween('created_at', [$from, $to])
+            ->orderBy('completed', 'desc')
+            ->get();
+
+        // Crear respuesta
+        $response = new \stdClass();
+        $response->error = false;
+        $response->enterprises = $enterprises;
+        $response->categories = $categories;
+        $response->risks = $risks;
+        $response->records = $records;
+        $response->version = $version;
+
+        return $response;
+    }
+}
