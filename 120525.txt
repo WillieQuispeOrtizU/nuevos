@@ -1,0 +1,597 @@
+authservice
+      if (!findUser.isActive) {
+        throw new UnauthorizedException(
+          'La cuenta del usuario no está activa.',
+        );
+      }
+
+//////////////////////////////////////////////////////////SALTO/////////////////////
+
+dashboardservice
+import { Injectable } from '@nestjs/common';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+import { PrismaService } from 'src/prisma.service';
+
+interface HallazgoData {
+  tipo: string;
+  cantidad: number;
+}
+
+interface ProjectChartData {
+  labels: string[];
+  datasets: {
+    label: string;
+    data: number[];
+    backgroundColor: string[];
+    borderRadius: number;
+  }[];
+}
+
+interface RiskChartData {
+  labels: string[];
+  datasets: {
+    data: number[];
+    backgroundColor: string[];
+  }[];
+}
+
+@Injectable()
+export class DashboardService {
+  constructor(private prisma: PrismaService) { }
+
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  };
+
+  async getRegistrosPorProyectoChartData(): Promise<ResponseScheme> {
+    try {
+      const projects = await this.prisma.project.findMany({
+        where: { deleted_at: null },
+        include: {
+          _count: {
+            select: { record: { where: { deleted_at: null } } },
+          },
+        },
+        orderBy: {
+          name: 'asc',
+        },
+      });
+
+      const labels = projects.map(p => p.name);
+      const dataCounts = projects.map(p => p._count.record);
+
+      const backgroundColors = projects.map(p => {
+        if (p.name === 'QUELLAVECO') return '#7d6bff';
+        return '#c0bfff';
+      });
+
+      const chartDataResult: ProjectChartData = {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Registros',
+            data: dataCounts,
+            backgroundColor: backgroundColors,
+            borderRadius: 5,
+          },
+        ],
+      };
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de registros por proyecto obtenidos correctamente';
+      this.resp.data = chartDataResult;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+      this.resp.statusCode = 500;
+      this.resp.data = {};
+    }
+    return this.resp;
+  }
+  async getTipoHallazgosData(): Promise<ResponseScheme> {
+    try {
+      const risksWithCounts = await this.prisma.risk.findMany({
+        where: { deleted_at: null },
+        select: {
+          name: true,
+          _count: {
+            select: {
+              record_risk: {
+                where: { deleted_at: null },
+              },
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+      });
+
+
+      const hallazgosResult: HallazgoData[] = risksWithCounts
+        .map(risk => ({
+          tipo: risk.name,
+          cantidad: risk._count.record_risk,
+        }))
+        .filter(hallazgo => hallazgo.cantidad > 0);
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Tipo de Hallazgos obtenidos correctamente';
+      this.resp.data = { hallazgos: hallazgosResult };
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Tipo de Hallazgos.';
+      this.resp.data = {};
+    }
+
+    return this.resp;
+  }
+  async getNivelDeRiesgoChartData(): Promise<ResponseScheme> {
+    try {
+      const records = await this.prisma.record.groupBy({
+        by: ['type'],
+        _count: {
+          type: true,
+        },
+        where: { deleted_at: null },
+      });
+      const total = records.reduce((sum, record) => sum + record._count.type, 0);
+      const seguro = records.find(record => record.type === 'Seguro')?._count.type || 0;
+      const inseguro = records.find(record => record.type === 'Inseguro')?._count.type || 0;
+
+      const seguroPorcentaje = ((seguro / total) * 100).toFixed(2);
+      const inseguroPorcentaje = ((inseguro / total) * 100).toFixed(2);
+
+      const chartDataResult: RiskChartData = {
+        labels: ['Seguro', 'Inseguro'],
+        datasets: [
+          {
+            data: [Number(seguroPorcentaje), Number(inseguroPorcentaje)],
+            backgroundColor: ['#34d399', '#10b981'],
+          },
+        ],
+      };
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Nivel de Riesgo obtenidos correctamente';
+      this.resp.data = chartDataResult;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Nivel de Riesgo.';
+      this.resp.data = {};
+    }
+
+    return this.resp;
+  }
+}
+
+
+/////////////////////////////////////////////////////////////////////SALTO//////////////////////
+dashboard.index.vue
+<template>
+  <div class="dashboard-container p-4">
+    <!-- Gráfico de Proyectos -->
+    <div class="card p-4">
+      <h4 class="font-semibold text-gray-900">Proyectos</h4>
+      <h4 class="text-gray-700">Registros x Proyecto</h4>
+      <canvas id="projectsChart"></canvas>
+    </div>
+    <!-- Mapa Leaflet -->
+    <div class="card p-4 mt-4">
+      <h4 class="font-semibold text-gray-900">Ubicaciones</h4>
+      <div id="map" style="height: 300px;"></div>
+    </div>
+
+    <!-- Tarjetas -->
+    <div class="card-row">
+      <!-- Tipo de Hallazgos -->
+      <div class="card p-4 h-full">
+        <h4 class="mb-2 font-semibold text-gray-900 text-base">Tipo de Hallazgos</h4>
+        <ul>
+          <li
+            v-for="(item, index) in hallazgos"
+            :key="index"
+            class="mb-1 flex items-center justify-between text-sm text-gray-700"
+          >
+            <div class="flex items-center">
+              <span
+                class="inline-block mr-2"
+                :style="{ color: starColors[index % starColors.length],
+                  fontSize: '1.5rem' // o '2rem', etc.
+                 }"
+              >★</span>
+              <span>{{ item.tipo }}</span>
+            </div>
+            <span>{{ item.cantidad }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Nivel de Riesgo -->
+      <div class="card p-4 text-center h-full">
+        <h4 class="mb-2 font-semibold text-gray-900 text-base">Nivel de Riesgo</h4>
+        <canvas id="riskChart" style="max-height: 200px;"></canvas>
+        <div class="mt-2 font-bold text-lg text-gray-800">30% AVG. Exceptions</div>
+      </div>
+
+      <!-- Categorías -->
+      <div class="card p-4 categorias h-full">
+        <h4 class="mb-4 font-semibold text-gray-900 text-base">Categorías</h4>
+        <ul class="space-y-4">
+          <li v-for="(cat, index) in categorias" :key="index" class="categoria-item">
+            <div class="progress-circle">
+              <svg viewBox="0 0 36 36">
+                <path class="circle-bg" d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path class="circle" :stroke="cat.color" :stroke-dasharray="`${cat.porcentaje}, 100`" d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831" />
+              </svg>
+              <span class="percentage">{{ cat.porcentaje }}%</span>
+            </div>
+
+            <div class="info">
+              <div class="nombre">{{ cat.nombre }}</div>
+              <div class="registros">{{ cat.registros }} registros</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import Chart from 'chart.js/auto'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+
+// Importa los íconos explícitamente
+import icon from 'leaflet/dist/images/marker-icon.png'
+import shadow from 'leaflet/dist/images/marker-shadow.png'
+import DashboardService from '@/services/DashboardService'
+// Arregla el problema del path de los íconos
+delete L.Icon.Default.prototype._getIconUrl
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: icon,
+  iconUrl: icon,
+  shadowUrl: shadow,
+})
+import 'leaflet/dist/leaflet.css'
+export default {
+  data() {
+    return {
+      projectChartInstance: null,
+      projectChartConfigData: { labels: [], datasets: [{ label: 'Registros', data: [], backgroundColor: '#c0bfff', borderRadius: 5 }] },
+      
+      riskChartInstance: null, 
+      riskChartConfigData: { labels: [], datasets: [{ data: [], backgroundColor: [] }] }, 
+      hallazgos: [],
+
+      categorias: [
+        { nombre: 'Medio Ambiente', porcentaje: 55, registros: 55, color: '#8b5cf6' },
+        { nombre: 'Seguridad', porcentaje: 30, registros: 30, color: '#10b981' },
+        { nombre: 'Salud', porcentaje: 10, registros: 10, color: '#ef4444' },
+        { nombre: 'Calidad', porcentaje: 5, registros: 5, color: '#06b6d4' },
+      ],
+      colores: [
+        { bg: '#f3e8ff', color: '#8b5cf6' }, // morado
+        { bg: '#e0f7fa', color: '#00acc1' }, // cyan
+        { bg: '#e0f2f1', color: '#26a69a' }, // teal
+        { bg: '#fff3e0', color: '#fb8c00' }, // naranja
+        { bg: '#ffebee', color: '#e53935' }, // rojo
+      ],
+      starColors: ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6'],
+    } 
+  },
+  mounted() {
+    this.loadProjectChartData()
+
+    this.loadHallazgosData()
+    this.loadRiskChartData();
+
+    this.renderProjectsChart()
+    this.renderRiskChart()
+    this.initMap()
+  },
+  methods: {
+    async loadProjectChartData() {
+      try {
+        const serviceCallResponse = await DashboardService.getRegistrosPorProyectoChartData();
+        if (serviceCallResponse && serviceCallResponse.status === true && serviceCallResponse.data) {
+          this.projectChartConfigData = serviceCallResponse.data;
+        } else {
+          this.projectChartConfigData = { labels: [], datasets: [{ label: 'Registros', data: [], backgroundColor: '#c0bfff', borderRadius: 5 }] };
+        }
+      } catch (error) {
+        this.projectChartConfigData = { labels: [], datasets: [{ label: 'Registros', data: [], backgroundColor: '#c0bfff', borderRadius: 5 }] };
+      }
+      this.renderProjectsChart();
+    },
+
+
+    async loadHallazgosData() {
+      try {
+        const serviceCallResponse = await DashboardService.getTipoHallazgosData();
+        if (serviceCallResponse && serviceCallResponse.status === true && serviceCallResponse.data) {
+          this.hallazgos = serviceCallResponse.data.hallazgos; 
+        } else {
+          this.hallazgos = []; 
+        }
+      } catch (error) {
+        console.error('Error al cargar los datos de hallazgos:', error);
+        this.hallazgos = [];
+      }
+    },
+    async loadRiskChartData() {
+      try {
+        const serviceCallResponse = await DashboardService.getNivelDeRiesgoChartData();
+        if (serviceCallResponse && serviceCallResponse.status === true && serviceCallResponse.data) {
+          this.riskChartConfigData = serviceCallResponse.data;
+          this.renderRiskChart(); 
+        }
+      } catch (error) {
+        console.error('Error al cargar los datos del gráfico de nivel de riesgo:', error);
+      }
+    },
+    
+
+    initMap() {
+      const map = L.map('map').setView([-12.0464, -77.0428], 6) // Centro: Lima, Perú
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map)
+
+      // Ejemplo: agregar marcador
+      L.marker([-12.0464, -77.0428])
+        .addTo(map)
+        .bindPopup('Lima - Proyecto Principal')
+        .openPopup()
+    },
+    renderProjectsChart() {
+      const ctx = document.getElementById('projectsChart');
+      if (!ctx) {
+        return;
+      }
+
+      if (this.projectChartInstance) {
+        this.projectChartInstance.destroy();
+      }
+
+      if (!this.projectChartConfigData || !this.projectChartConfigData.labels || !this.projectChartConfigData.datasets) {
+        return;
+      }
+
+      this.projectChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: this.projectChartConfigData,
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: value => value >= 1000 ? `${value / 1000}k` : value,
+              }
+            }
+          }
+        }
+      });
+    },
+    renderRiskChart() {
+      const ctx = document.getElementById('riskChart');
+      if (!ctx) {
+        return;
+      }
+
+      if (this.riskChartInstance) {
+        this.riskChartInstance.destroy();
+      }
+
+      this.riskChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: this.riskChartConfigData,
+        options: {
+          cutout: '70%',
+          plugins: {
+            legend: { display: true },
+          },
+        },
+      });
+    },
+  }
+}
+</script>
+
+<style scoped lang="scss">
+.card-row {
+  display: flex;
+  gap: 1rem; // espacio entre las tarjetas
+  justify-content: space-between;
+
+  >.card {
+    flex: 1 1 0;
+    min-width: 0; // evita que se rompa el layout
+  }
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  height: 100%;
+}
+
+/* Estilo de las tarjetas de Tipo de Hallazgos igual al de Categorías */
+.card .p-4 {
+  padding: 16px;
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Estilo para las listas de hallazgos y categorías */
+ul {
+  padding: 0;
+  margin: 0;
+}
+
+li {
+  list-style: none;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+/* Para los nombres de hallazgos y categorías */
+span {
+  font-weight: 500;
+}
+
+/* Fondo de tarjeta en color gris claro */
+.card.bg-white {
+  background-color: #f9fafb;
+}
+
+.categorias {
+  ul {
+    padding: 0;
+    margin: 0;
+
+    .categoria-item {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      /* Ajustar a flex-start para que estén pegados al gráfico */
+    }
+
+    .progress-circle {
+      width: 48px;
+      height: 48px;
+      position: relative;
+      margin-right: 20px; // espacio justo al texto
+      flex-shrink: 0; // evita que se reduzca
+
+      svg {
+        width: 100%;
+        height: 100%;
+        transform: rotate(-90deg);
+
+        .circle-bg {
+          fill: none;
+          stroke: #e5e7eb;
+          stroke-width: 4;
+        }
+
+        .circle {
+          fill: none;
+          stroke-width: 4;
+          stroke-linecap: round;
+          transition: stroke-dasharray 0.3s ease;
+        }
+      }
+
+      .percentage {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 12px;
+        font-weight: 600;
+        color: #4b5563;
+      }
+    }
+
+    .info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      margin-top: 0;
+
+      /* Evitar que haya más espacio encima del texto */
+      .nombre {
+        font-weight: 600;
+        color: #111827;
+        font-size: 14px;
+        margin-bottom: 2px;
+      }
+
+      .registros {
+        font-size: 12px;
+        color: #6b7280;
+      }
+    }
+  }
+}
+
+.card h4 {
+  font-size: 1rem;
+  color: #111827;
+  /* Color para ambos h4 */
+  margin: 0;
+  /* Elimina márgenes innecesarios */
+}
+
+.card h4:first-of-type {
+  font-weight: 600;
+  /* Negrita solo para el primer título (Proyectos) */
+}
+
+.card h4:last-of-type {
+  font-weight: normal;
+  /* Normal para el segundo título (Registros x Proyecto) */
+  margin-top: 4px;
+  /* Un poco de separación entre los títulos */
+}
+
+#map {
+  width: 100%;
+  height: 300px;
+  border-radius: 12px;
+  margin-top: 1rem;
+}
+</style>
+
+
+////////////////////////////////////////////////////////////////////////////SALTO
+
+dashboardservice:
+/* eslint-disable */
+import VueStoreService from './VueStoreService';
+import store from '@/store';
+
+const DashboardService = {
+  async getRegistrosPorProyectoChartData() {
+    const resp = await VueStoreService.get("dashboard/registrosporproyecto", store);
+    return resp;
+  },
+  async getTipoHallazgosData() {
+    const resp = await VueStoreService.get("dashboard/tipohallazgos", store);
+    return resp;
+  },
+  async getNivelDeRiesgoChartData() {
+    const resp = await VueStoreService.get('dashboard/nivelderiesgo', store); 
+    return resp;
+  },
+  
+};
+
+
+export default DashboardService;
