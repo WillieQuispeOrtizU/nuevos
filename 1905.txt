@@ -1,0 +1,49 @@
+Filtro Graficos. Filtro fecha app. UserFiles reparar.
+
+
+onProjectChange() {
+  // Filtrar los registros por el proyecto seleccionado
+  this.reports = this.rs.reports.filter(r => Number(r.project_id) === Number(this.project_id));
+}
+
+<ion-item>
+  <ion-label>Selecciona un Proyecto</ion-label>
+  <ion-select [(ngModel)]="project_id" (ionChange)="onProjectChange()">
+    <ion-select-option *ngFor="let p of enterprise?.project" [value]="p.id">{{p.name}}</ion-select-option>
+  </ion-select>
+</ion-item>
+
+/////////////////////////////////////////////////////////////////////////////////*
+
+<ion-item>
+  <ion-label>Desde</ion-label>
+  <ion-datetime displayFormat="YYYY-MM-DD" [(ngModel)]="fechaInicio"></ion-datetime>
+</ion-item>
+<ion-item>
+  <ion-label>Hasta</ion-label>
+  <ion-datetime displayFormat="YYYY-MM-DD" [(ngModel)]="fechaFin"></ion-datetime>
+</ion-item>
+
+
+fechaInicio: string | null = null;
+fechaFin: string | null = null;
+reports: any[] = [];
+
+onFilterChange() {
+  const start = this.fechaInicio ? new Date(this.fechaInicio) : null;
+  const end = this.fechaFin ? new Date(this.fechaFin) : null;
+
+  this.reports = this.rs.reports.filter(record => {
+    const recordDate = new Date(record.created_at);
+    let dentroDeRango = true;
+    if (start) dentroDeRango = dentroDeRango && (recordDate >= start);
+    if (end) dentroDeRango = dentroDeRango && (recordDate <= end);
+    return dentroDeRango;
+  });
+}
+
+
+ngOnInit() {
+  // Muestra todos los records al inicio o aplica el filtro si ya hay fechas seleccionadas
+  this.onFilterChange();
+}
