@@ -1,0 +1,711 @@
+Filtro dashboard service v/
+Filtro fecha app 
+Envio correo diseño
+User Files app
+
+dashboard.service.ts:
+import { Injectable } from '@nestjs/common';
+import { PaginationDto } from 'src/common/dto/pagination.interface';
+import { GlobalFunctions } from 'src/common/functions/global-function';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+import { PrismaService } from 'src/prisma.service';
+
+interface HallazgoData {
+  tipo: string;
+  cantidad: number;
+}
+
+interface ProjectChartData {
+  labels: string[];
+  datasets: {
+    label: string;
+    data: number[];
+    backgroundColor: string[];
+    borderRadius: number;
+  }[];
+}
+
+interface RiskChartData {
+  labels: string[];
+  datasets: {
+    data: number[];
+    backgroundColor: string[];
+  }[];
+}
+
+interface CategoriaData {
+  nombre: string;
+  porcentaje: number;
+  registros: number;
+  color: string;
+}
+
+@Injectable()
+export class DashboardService {
+  constructor(private prisma: PrismaService,
+    private readonly globalFunctions: GlobalFunctions,
+
+  ) { }
+
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  };
+
+  async getRegistrosPorProyectoChartData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const projects = await this.prisma.project.findMany({
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+        include: {
+          _count: {
+            select: { record: { where: { deleted_at: null } } },
+          },
+        },
+        orderBy: objectFilter.order,
+      });
+
+      const labels = projects.map(p => p.name);
+      const dataCounts = projects.map(p => p._count.record);
+
+      const backgroundColors = projects.map(p => {
+        if (p.name === 'QUELLAVECO') return '#7d6bff';
+        return '#c0bfff';
+      });
+
+      const chartDataResult: ProjectChartData = {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Registros',
+            data: dataCounts,
+            backgroundColor: backgroundColors,
+            borderRadius: 5,
+          },
+        ],
+      };
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de registros por proyecto obtenidos correctamente';
+      this.resp.data = chartDataResult;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+      this.resp.statusCode = 500;
+      this.resp.data = {};
+    }
+    return this.resp;
+  }
+  async getTipoHallazgosData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const risksWithCounts = await this.prisma.risk.findMany({
+        where: { deleted_at: null },
+        select: {
+          name: true,
+          _count: {
+            select: {
+              record_risk: {
+                where: {
+                  deleted_at: null,
+                  AND: objectFilter.contains,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+      });
+
+      const hallazgosResult: HallazgoData[] = risksWithCounts
+        .map(risk => ({
+          tipo: risk.name,
+          cantidad: risk._count.record_risk,
+        }))
+        .filter(hallazgo => hallazgo.cantidad > 0);
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Tipo de Hallazgos obtenidos correctamente';
+      this.resp.data = { hallazgos: hallazgosResult };
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Tipo de Hallazgos.';
+      this.resp.data = {};
+    }
+
+    return this.resp;
+  }
+  async getNivelDeRiesgoChartData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const records = await this.prisma.record.groupBy({
+        by: ['type'],
+        _count: {
+          type: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+      });
+      const total = records.reduce((sum, record) => sum + record._count.type, 0);
+      const seguro = records.find(record => record.type === 'Seguro')?._count.type || 0;
+      const inseguro = records.find(record => record.type === 'Inseguro')?._count.type || 0;
+
+      const seguroPorcentaje = ((seguro / total) * 100).toFixed(2);
+      const inseguroPorcentaje = ((inseguro / total) * 100).toFixed(2);
+
+      const chartDataResult: RiskChartData = {
+        labels: ['Seguro', 'Inseguro'],
+        datasets: [
+          {
+            data: [Number(seguroPorcentaje), Number(inseguroPorcentaje)],
+            backgroundColor: ['#0bb300', '#e30000'],
+          },
+        ],
+      };
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Nivel de Riesgo obtenidos correctamente';
+      this.resp.data = chartDataResult;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Nivel de Riesgo.';
+      this.resp.data = {};
+    }
+
+    return this.resp;
+  }
+  async getCategoriasChartData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+      const recordsGroupedById = await this.prisma.record.groupBy({
+        by: ['categoryId'],
+        _count: {
+          categoryId: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+      });
+
+      const categoryIds = recordsGroupedById.map(group => group.categoryId);
+      const categories = await this.prisma.category.findMany({
+        where: {
+          id: { in: categoryIds },
+          deleted_at: null,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      const categoryIdToNameMap = new Map<number, string>();
+      categories.forEach(cat => {
+        categoryIdToNameMap.set(cat.id, cat.name);
+      });
+
+      const totalRecords = recordsGroupedById.reduce((sum, group) => sum + group._count.categoryId, 0);
+
+      const categoriasResultTemp: Omit<CategoriaData, 'color'>[] = recordsGroupedById.map(group => {
+        const count = group._count.categoryId;
+        const name = categoryIdToNameMap.get(group.categoryId) || 'Categoría Desconocida';
+        const percentage = totalRecords > 0 ? Math.round((count / totalRecords) * 100) : 0;
+
+        return {
+          nombre: name,
+          porcentaje: percentage,
+          registros: count,
+        };
+      });
+
+      const predefinedColors = {
+        'Medio Ambiente': '#8b5cf6',
+        'Seguridad': '#10b981',
+        'Salud': '#ef4444',
+        'Calidad': '#06b6d4',
+      };
+      const defaultColorsCycle = ['#8b5cf6', '#10b981', '#ef4444', '#06b6d4', '#f59e0b', '#6366f1'];
+      let colorIndex = 0;
+
+      const categoriasResult: CategoriaData[] = categoriasResultTemp.map(cat => ({
+        ...cat,
+        color: predefinedColors[cat.nombre] || defaultColorsCycle[colorIndex++ % defaultColorsCycle.length]
+      }));
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Categorías obtenidos correctamente';
+      this.resp.data = categoriasResult;
+
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Categorías.';
+      this.resp.data = [];
+    }
+
+    return this.resp;
+  }
+  async getRecordsLocations(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const records = await this.prisma.record.findMany({
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+          description: true, // O cualquier otro campo que quieras mostrar
+        },
+      });
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Ubicaciones de los records obtenidas correctamente';
+      this.resp.data = records;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener las ubicaciones de los records.';
+      this.resp.data = [];
+    }
+    return this.resp;
+  }
+
+  async getProjectLocations(): Promise<ResponseScheme> {
+    try {
+      const projects = await this.prisma.project.findMany({
+        where: { deleted_at: null },
+        select: {
+          id: true,
+          name: true,
+          latitude: true,
+          longitude: true,
+        },
+      });
+
+      const locations = projects.map(project => ({
+        id: project.id,
+        name: project.name,
+        latitude: project.latitude,
+        longitude: project.longitude,
+      }));
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Ubicaciones de proyectos obtenidas correctamente';
+      this.resp.data = locations;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener las ubicaciones de los proyectos.';
+      this.resp.data = [];
+    }
+
+    return this.resp;
+  }
+}
+
+
+//////////////////////////////////////////////////SALTO///////////////////////////////
+
+dashboard.controller.ts:
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
+import { DashboardService } from './dashboard.service';
+import { CreateDashboardDto } from './dto/create-dashboard.dto';
+import { UpdateDashboardDto } from './dto/update-dashboard.dto';
+import { PaginationDto } from 'src/common/dto/pagination.interface';
+
+@Controller('dashboard')
+export class DashboardController {
+  constructor(private readonly dashboardService: DashboardService) { }
+
+  @Get('/registrosporproyecto')
+  getRegistrosPorProyectoChartData(@Query() paginationDto: PaginationDto) {
+    return this.dashboardService.getRegistrosPorProyectoChartData(paginationDto);
+  }
+
+  @Get('/tipohallazgos')
+  getTipoHallazgosData(@Query() paginationDto: PaginationDto) {
+    return this.dashboardService.getTipoHallazgosData(paginationDto);
+  }
+
+  @Get('/nivelderiesgo')
+  getNivelDeRiesgoChartData(@Query() paginationDto: PaginationDto) {
+    return this.dashboardService.getNivelDeRiesgoChartData(paginationDto);
+  }
+
+  @Get('/categoriaschart')
+  getCategoriasChartData(@Query() paginationDto: PaginationDto) {
+    return this.dashboardService.getCategoriasChartData(paginationDto);
+  }
+
+  @Get('/recordlocations')
+  async getRecordsLocations(@Query() paginationDto: PaginationDto) {
+    return this.dashboardService.getRecordsLocations(paginationDto);
+  }
+
+  @Get('/projectlocations')
+  getProjectLocations() {
+    return this.dashboardService.getProjectLocations();
+  }
+
+
+}
+
+//////////////////////////////////////////////////SALTO/////////////////////////
+
+mail.service.ts:
+import { Injectable } from '@nestjs/common';
+import { MailerService } from '@nestjs-modules/mailer';
+
+@Injectable()
+export class MailService {
+  constructor(private readonly mailerService: MailerService) {}
+
+  async sendUserConfirmation(email: string, fullName: string, code: string) {
+    const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Confirma tu registro',
+      html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>JJC</title>
+        <style type="text/css">
+          .table{padding:15px;}
+          .content{width:100%;max-width:600px;padding:30px;}
+          .logo{display:block;width:140px;}
+          .logo_vertical{display:block;height:110px;}
+          p{font-family:'Raleway','Open sans','Roboto',sans-serif;font-size:15px;}
+          a{color:#F2C521;} 
+        </style>
+      </head>
+      <body bgcolor="#EFEFEF">
+        <table class="table" width="100%" bgcolor="#EFEFEF" border="0" cellpadding="0" cellspacing="0">
+          <tr>
+            <td>
+              <table align="center" class="content" bgcolor="#FFFFFF" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td><img class="logo" src="${baseUrl}/public/imgs/logo.png"></td>
+                  <td style="text-align: right;"><img class="logo_vertical" src="${baseUrl}/public/imgs/logo_right.png"></td>
+                </tr>
+                <tr>
+                  <td>
+                    <p>Hola <strong>${fullName}</strong>,</p>
+                    <p>Tu codigo de confirmacion es: <strong>${code}</strong></p>
+                    <p>Saludos.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+      `,
+    });
+  }
+}
+
+////////////////////////////////////////////////////SALTO/////////////////////////
+
+main.ts:
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
+import { urlencoded, json } from 'express';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
+
+async function bootstrap() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Servir la carpeta uploads de forma pública
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
+  app.useStaticAssets(join(__dirname, '..', 'public'), {
+    prefix: '/public/',
+  });
+  app.enableCors({
+    origin: '*', // o mejor especifica el origen exacto: 'http://localhost:8100'
+    methods: ['GET', 'PATCH', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with'],
+  });
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
+  app.set('trust proxy', 1);
+  // Aumentar el timeout del servidor a 5 minutos
+  const server = app.getHttpServer();
+  server.setTimeout(300000); // 300,000 ms = 5 minutos
+  app.set('trust proxy', 1);
+  await app.listen(4500);
+}
+bootstrap();
+
+///////////////////////////////////////////////SALTO////////////////
+
+public/imgs/
+
+logo
+logo_right
+
+//////////////////////////////////////////////SALTO/////////////
+
+tarjeta-main.page.ts:
+import { Component, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
+import { RecordService } from 'src/app/services/record.service';
+import { LocationService } from 'src/app/services/location.service';
+import { AlertController, NavController, Platform } from '@ionic/angular';
+import { UserService } from 'src/app/services/user.service';
+import { LoadingService } from 'src/app/services/loading.service';
+import { NetworkService } from 'src/app/services/network.service';
+import { AlertCtrlService } from 'src/app/services/alert-ctrl.service';
+import { Enterprise } from 'src/app/interfaces/enterprise';
+
+import { Browser } from '@capacitor/browser';
+import { Subscription } from 'rxjs';
+
+import { VersionService } from 'src/app/services/version.service';
+import { Device } from '@capacitor/device';
+import { environment } from 'src/environments/environment';
+import { Project } from 'src/app/interfaces/general_offline';
+import { Record } from 'src/app/interfaces/record'; // Ajusta la ruta según tu proyecto
+
+@Component({
+  selector: 'app-tarjeta-main',
+  templateUrl: './tarjeta-main.page.html',
+  styleUrls: ['./tarjeta-main.page.scss'],
+})
+export class TarjetaMainPage implements OnInit {
+  rangoFechas: { from: string; to: string } | null = null;
+  fechaInicio: string | null = null;
+  fechaFin: string | null = null;
+  project_id: any = '';
+  reports: any[] = [];
+  covid_records: any[] = [];
+  loading_flag: boolean = false;
+  version_flag: boolean = false;
+  project: Project | null = null;
+  show_corona = false;
+  show_corona_card = false;
+  segment_records = '0';
+  enterprise: Enterprise | undefined = undefined;
+  private networkSubscription!: Subscription;
+
+
+  constructor(private router: Router,
+    public rs: RecordService,
+    public ls: LocationService,
+    private alertController: AlertController,
+    private alertCtrl: AlertCtrlService,
+    private loading: LoadingService,
+    public us: UserService,
+    private navCtrl: NavController,
+    private ns: NetworkService,
+    private platform: Platform,
+    private vs: VersionService) {
+
+
+    this.enterprise = this.searchEnterpriseById(this.rs.enterprise_id);
+
+    if (this.enterprise) {
+      this.project = this.searchProjectById(this.enterprise, this.rs.project_id);
+    } else {
+      this.project = null;
+    }
+
+
+    const hasConnectionChanged = this.ns.checkConnectionAndResetFlag();
+
+    this.networkSubscription = this.ns.isConnected$.subscribe((isConnected) => {
+      if (isConnected && !this.loading_flag && hasConnectionChanged) {
+        this.loading_flag = true;
+        this.getGeneralInformation();
+      }
+    });
+
+  }
+
+  ngOnInit() {
+    this.setDefaultDateRange();
+
+    this.onFilterChange();
+    console.log(this.rs.reports);
+  }
+  private formatDateToYYYYMMDD(date: Date): string {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private setDefaultDateRange(): void {
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    this.rangoFechas = {
+      from: this.formatDateToYYYYMMDD(thirtyDaysAgo),
+      to: this.formatDateToYYYYMMDD(today)
+    };
+    this.fechaInicio = this.rangoFechas.from;
+    this.fechaFin = this.rangoFechas.to;
+  }
+  onRangeChange(event: any) {
+    // event.detail.value tiene {from, to}
+    const { from, to } = event.detail.value || {};
+    this.fechaInicio = from;
+    this.fechaFin = to;
+    this.onFilterChange();
+  }
+
+  onFilterChange() {
+    let startDate: Date | undefined;
+    if (this.fechaInicio) {
+      const parts = this.fechaInicio.split('-');
+      if (parts.length === 3 && parts.every(part => !isNaN(parseInt(part, 10)))) {
+        startDate = new Date(+parts[0], +parts[1] - 1, +parts[2], 0, 0, 0, 0);
+      }
+    }
+
+    let endDate: Date | undefined;
+    if (this.fechaFin) {
+      const parts = this.fechaFin.split('-');
+      if (parts.length === 3 && parts.every(part => !isNaN(parseInt(part, 10)))) {
+        endDate = new Date(+parts[0], +parts[1] - 1, +parts[2], 23, 59, 59, 999);
+      }
+    }
+
+    this.reports = this.rs.reports.filter((record: Record) => {
+      if (!record.created_at) return false;
+      const recordDateString = typeof record.created_at === 'string'
+        ? record.created_at.replace(' ', 'T')
+        : record.created_at;
+      const recordDate = new Date(recordDateString);
+      if (isNaN(recordDate.getTime())) return false;
+      if (startDate && recordDate < startDate) return false;
+      if (endDate && recordDate > endDate) return false;
+      return true;
+    });
+  }
+/////////////////////////////////////////SALTO//////////////////////
+
+tarjeta-main.page.html:
+<ion-item>
+  <ion-label>Rango de fechas</ion-label>
+  <ion-datetime
+    [(ngModel)]="rangoFechas"
+    presentation="date-range"
+    (ionChange)="onRangeChange($event)"
+    display-format="yyyy-MM-dd"
+    placeholder="Selecciona un rango">
+  </ion-datetime>
+</ion-item>
+
