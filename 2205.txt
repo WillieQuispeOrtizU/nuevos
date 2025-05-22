@@ -1,0 +1,502 @@
+Devolver a registrosxproyecto
+        orderBy: objectFilter.order,
+
+//////////////////////////////////////////////tarjeta-main.page.html////////////////////////
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+        <ion-back-button text="" defaultHref="/"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Tarjeta MAAR</ion-title>
+</ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-fab vertical="bottom" horizontal="end" slot="fixed" class="corona_fab">
+    <ion-fab-button (click)="createReport()">
+        <ion-label>Crear tarjeta</ion-label>
+        <ion-icon name="add"></ion-icon>
+    </ion-fab-button>
+  </ion-fab>
+  <ion-item lines="none" class="enterprise_item">
+    <ion-label class="ion-text-wrap">{{enterprise?.name}}</ion-label>
+  </ion-item>
+  <ion-item lines="none" class="project_item">
+      <ion-label class="ion-text-wrap">{{project?.name}}</ion-label>
+  </ion-item>
+  <ion-refresher slot="fixed" (ionRefresh)="doRefresh($event)">
+    <ion-refresher-content></ion-refresher-content>
+  </ion-refresher>
+
+<ion-item>
+  <ion-label position="stacked">Desde</ion-label>
+  <ion-datetime-button datetime="desde"></ion-datetime-button>
+</ion-item>
+<ion-modal [keepContentsMounted]="true">
+  <ng-template>
+    <ion-datetime
+      id="desde"
+      display-format="yyyy-MM-dd"
+      [(ngModel)]="fechaInicio"
+      (ionChange)="onFilterChange()"
+      placeholder="Selecciona fecha de inicio">
+    </ion-datetime>
+  </ng-template>
+</ion-modal>
+
+<ion-item>
+  <ion-label position="stacked">Hasta</ion-label>
+  <ion-datetime-button datetime="hasta"></ion-datetime-button>
+</ion-item>
+<ion-modal [keepContentsMounted]="true">
+  <ng-template>
+    <ion-datetime
+      id="hasta"
+      display-format="yyyy-MM-dd"
+      [(ngModel)]="fechaFin"
+      (ionChange)="onFilterChange()"
+      placeholder="Selecciona fecha final">
+    </ion-datetime>
+  </ng-template>
+</ion-modal>
+
+  <ion-list lines="none" class="list_records">
+      <ion-item-sliding *ngFor="let item of reports;let i = index;">
+          <ion-item-options side="start">
+              <ion-item-option color="danger" (click)="deleteRecord(item,i)">Eliminar</ion-item-option>
+          </ion-item-options>
+
+          <ion-item lines="none" (click)="goDetail(item.id)">
+              <div [class]="'project_list ' + item.type" *ngIf="!item.created_at">
+                  <div class="title">
+                      <span>{{ item.project.name }}</span>
+                      <span>{{ item.date_info }}</span>
+                  </div>
+                  <div class="fullname">
+                      <span>{{ item.worker_fullname }}</span>
+                  </div>
+                  <div class="type">
+                      <span>{{ item.type }}</span>
+                  </div>
+              </div>
+              <div [class]="'project_list ' + item.type" *ngIf="item.created_at">
+                  <div class="title">
+                      <span>{{ item.project_name }}</span>
+                      <span>{{ item.completed | date: "dd/MM/yyyy hh:mm a" }}</span>
+                  </div>
+                  <div class="fullname">
+                      <span>{{ item.worker_fullname }}</span>
+                  </div>
+                  <div class="type">
+                      <span>{{ item.type }}</span>
+                  </div>
+                  <div class="exclamation">
+                      <ion-icon name="alert"></ion-icon>
+                  </div>
+              </div>
+          </ion-item>
+
+      </ion-item-sliding>
+  </ion-list>
+</ion-content>
+
+///////////////////////////////////dashboard.service.ts///
+
+import { Injectable } from '@nestjs/common';
+import { PaginationDto } from 'src/common/dto/pagination.interface';
+import { GlobalFunctions } from 'src/common/functions/global-function';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+import { PrismaService } from 'src/prisma.service';
+
+interface HallazgoData {
+  tipo: string;
+  cantidad: number;
+}
+
+interface ProjectChartData {
+  labels: string[];
+  datasets: {
+    label: string;
+    data: number[];
+    backgroundColor: string[];
+    borderRadius: number;
+  }[];
+}
+
+interface RiskChartData {
+  labels: string[];
+  datasets: {
+    data: number[];
+    backgroundColor: string[];
+  }[];
+}
+
+interface CategoriaData {
+  nombre: string;
+  porcentaje: number;
+  registros: number;
+  color: string;
+}
+
+@Injectable()
+export class DashboardService {
+  constructor(private prisma: PrismaService,
+    private readonly globalFunctions: GlobalFunctions,
+
+  ) { }
+
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  };
+
+  async getRegistrosPorProyectoChartData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const projects = await this.prisma.project.findMany({
+        where: {
+          deleted_at: null,
+        },
+        include: {
+          _count: {
+            select: { record: { where: { deleted_at: null, AND: objectFilter.contains,} } },
+          },
+        },
+      });
+
+      const labels = projects.map(p => p.name);
+      const dataCounts = projects.map(p => p._count.record);
+
+      const backgroundColors = projects.map(p => {
+        if (p.name === 'QUELLAVECO') return '#7d6bff';
+        return '#c0bfff';
+      });
+
+      const chartDataResult: ProjectChartData = {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Registros',
+            data: dataCounts,
+            backgroundColor: backgroundColors,
+            borderRadius: 5,
+          },
+        ],
+      };
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de registros por proyecto obtenidos correctamente';
+      this.resp.data = chartDataResult;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+      this.resp.statusCode = 500;
+      this.resp.data = {};
+    }
+    return this.resp;
+  }
+  async getTipoHallazgosData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const risksWithCounts = await this.prisma.risk.findMany({
+        where: { deleted_at: null },
+        select: {
+          name: true,
+          _count: {
+            select: {
+              record_risk: {
+                where: {
+                  deleted_at: null,
+                  record: {
+                    AND: objectFilter.contains,
+                    deleted_at: null,
+                  }
+                },
+              },
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+      });
+
+      const hallazgosResult: HallazgoData[] = risksWithCounts
+        .map(risk => ({
+          tipo: risk.name,
+          cantidad: risk._count.record_risk,
+        }))
+        .filter(hallazgo => hallazgo.cantidad > 0);
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Tipo de Hallazgos obtenidos correctamente';
+      this.resp.data = { hallazgos: hallazgosResult };
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Tipo de Hallazgos.';
+      this.resp.data = {};
+    }
+
+    return this.resp;
+  }
+  async getNivelDeRiesgoChartData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const records = await this.prisma.record.groupBy({
+        by: ['type'],
+        _count: {
+          type: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+      });
+      const total = records.reduce((sum, record) => sum + record._count.type, 0);
+      const seguro = records.find(record => record.type === 'Seguro')?._count.type || 0;
+      const inseguro = records.find(record => record.type === 'Inseguro')?._count.type || 0;
+
+      const seguroPorcentaje = ((seguro / total) * 100).toFixed(2);
+      const inseguroPorcentaje = ((inseguro / total) * 100).toFixed(2);
+
+      const chartDataResult: RiskChartData = {
+        labels: ['Seguro', 'Inseguro'],
+        datasets: [
+          {
+            data: [Number(seguroPorcentaje), Number(inseguroPorcentaje)],
+            backgroundColor: ['#0bb300', '#e30000'],
+          },
+        ],
+      };
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Nivel de Riesgo obtenidos correctamente';
+      this.resp.data = chartDataResult;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Nivel de Riesgo.';
+      this.resp.data = {};
+    }
+
+    return this.resp;
+  }
+  async getCategoriasChartData(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+      const recordsGroupedById = await this.prisma.record.groupBy({
+        by: ['categoryId'],
+        _count: {
+          categoryId: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+      });
+
+      const categoryIds = recordsGroupedById.map(group => group.categoryId);
+      const categories = await this.prisma.category.findMany({
+        where: {
+          id: { in: categoryIds },
+          deleted_at: null,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      const categoryIdToNameMap = new Map<number, string>();
+      categories.forEach(cat => {
+        categoryIdToNameMap.set(cat.id, cat.name);
+      });
+
+      const totalRecords = recordsGroupedById.reduce((sum, group) => sum + group._count.categoryId, 0);
+
+      const categoriasResultTemp: Omit<CategoriaData, 'color'>[] = recordsGroupedById.map(group => {
+        const count = group._count.categoryId;
+        const name = categoryIdToNameMap.get(group.categoryId) || 'Categoría Desconocida';
+        const percentage = totalRecords > 0 ? Math.round((count / totalRecords) * 100) : 0;
+
+        return {
+          nombre: name,
+          porcentaje: percentage,
+          registros: count,
+        };
+      });
+
+      const predefinedColors = {
+        'Medio Ambiente': '#8b5cf6',
+        'Seguridad': '#10b981',
+        'Salud': '#ef4444',
+        'Calidad': '#06b6d4',
+      };
+      const defaultColorsCycle = ['#8b5cf6', '#10b981', '#ef4444', '#06b6d4', '#f59e0b', '#6366f1'];
+      let colorIndex = 0;
+
+      const categoriasResult: CategoriaData[] = categoriasResultTemp.map(cat => ({
+        ...cat,
+        color: predefinedColors[cat.nombre] || defaultColorsCycle[colorIndex++ % defaultColorsCycle.length]
+      }));
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Datos para el gráfico de Categorías obtenidos correctamente';
+      this.resp.data = categoriasResult;
+
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener los datos de Categorías.';
+      this.resp.data = [];
+    }
+
+    return this.resp;
+  }
+  async getRecordsLocations(paginationDto: PaginationDto): Promise<ResponseScheme> {
+    try {
+      const {
+        page = 1,
+        limit = 100000000,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const records = await this.prisma.record.findMany({
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+          description: true, // O cualquier otro campo que quieras mostrar
+        },
+      });
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Ubicaciones de los records obtenidas correctamente';
+      this.resp.data = records;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener las ubicaciones de los records.';
+      this.resp.data = [];
+    }
+    return this.resp;
+  }
+
+  async getProjectLocations(): Promise<ResponseScheme> {
+    try {
+      const projects = await this.prisma.project.findMany({
+        where: { deleted_at: null },
+        select: {
+          id: true,
+          name: true,
+          latitude: true,
+          longitude: true,
+        },
+      });
+
+      const locations = projects.map(project => ({
+        id: project.id,
+        name: project.name,
+        latitude: project.latitude,
+        longitude: project.longitude,
+      }));
+
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      this.resp.message = 'Ubicaciones de proyectos obtenidas correctamente';
+      this.resp.data = locations;
+    } catch (e) {
+      console.error(e);
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = 'Error al obtener las ubicaciones de los proyectos.';
+      this.resp.data = [];
+    }
+
+    return this.resp;
+  }
+}
