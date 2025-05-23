@@ -14,3 +14,8 @@
         "isTrusted": true
     }
 }
+
+polyfills.9a4f75b2bff0df9b.js:1 
+            
+            
+           POST http://localhost:4500/getVersion net::ERR_CONNECTION_REFUSED
