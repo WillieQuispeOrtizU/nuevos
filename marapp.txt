@@ -1,0 +1,121 @@
+<ion-header>
+  <ion-toolbar>
+      <ion-buttons slot="start">
+          <ion-back-button text=""></ion-back-button>
+      </ion-buttons>
+      <ion-title>Cambio de clave</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <form (submit)="changePassword($event)">
+      <ion-grid>
+          <ion-row>
+              <ion-col size="12">
+                  <ion-item>
+                      <ion-label position="stacked">Clave actual</ion-label>
+                      <ion-input type="password" [(ngModel)]="userData.password" name="password"></ion-input>
+                  </ion-item>
+              </ion-col>
+              <ion-col size="12">
+                  <ion-item>
+                      <ion-label position="stacked">Nueva clave</ion-label>
+                      <ion-input type="password" [(ngModel)]="userData.newpassword" name="newpassword"></ion-input>
+                  </ion-item>
+              </ion-col>
+              <ion-col size="12">
+                  <ion-item>
+                      <ion-label position="stacked">Repetir clave</ion-label>
+                      <ion-input type="password" [(ngModel)]="userData.newpassword_confirmation" name="newpassword_confirmation"></ion-input>
+                  </ion-item>
+              </ion-col>
+              <ion-col size="12">
+                  <ion-button 
+                      type="submit" 
+                      [disabled]="userData.password == '' || 
+                      userData.newpassword == '' || 
+                      userData.newpassword_confirmation == '' ||
+                      !internet"
+                  >Cambiar</ion-button>
+              </ion-col>
+              <ion-col size="12" class="ion-justify-content-center d-flex" *ngIf="!internet">
+                  <small color="danger" class="danger">Debe tener internet para realizar esta acción</small>
+              </ion-col>
+          </ion-row>
+      </ion-grid>
+  </form>
+</ion-content>
+
+///////////////////////////////////////////////////////////////
+
+import { Component, OnInit } from '@angular/core';
+import { LoadingService } from 'src/app/services/loading.service';
+import { UserService } from 'src/app/services/user.service';
+import { AlertCtrlService } from 'src/app/services/alert-ctrl.service';
+import { NetworkService } from 'src/app/services/network.service';
+import { ActivatedRoute, Router } from '@angular/router';
+import { NavController } from '@ionic/angular';
+
+@Component({
+    selector: 'app-change-password',
+    templateUrl: './change-password.page.html',
+    styleUrls: ['./change-password.page.scss'],
+})
+export class ChangePasswordPage implements OnInit {
+
+    userData: any = {
+        password: '',
+        newpassword: '',
+        newpassword_confirmation: '',
+    }
+    internet: Boolean = false;
+    page = '';
+    constructor(private loading: LoadingService,
+        private alertCtrl: AlertCtrlService,
+        private us: UserService,
+        private ns: NetworkService,
+        private activeRouter: ActivatedRoute,
+        private navCtrl: NavController,
+        private router: Router) { }
+
+    ionViewDidEnter() {
+        this.internet = this.ns.checkConnection();
+    }
+
+    ngOnInit() {
+        this.page = this.activeRouter.snapshot.paramMap.get('page') ?? ''; // Asigna un string vacío si es null
+    }
+
+    changePassword(event: any) {
+        this.loading.present();
+        this.us.changePassword(this.userData)
+            .subscribe(
+                (data) => {
+                    this.loading.dismiss();
+                    if (data.error) {
+                        this.us.manageErrors(data, null);
+                        return;
+                    }
+
+                    this.alertCtrl.present("JJC", data.message); // Asegúrate de mostrar el campo correcto
+                    this.userData.password = "";
+                    this.userData.newpassword = "";
+                    this.userData.newpassword_confirmation = "";
+
+                    if (this.page == 'login') {
+                        this.navCtrl.setDirection('root');
+                        this.router.navigate(['/pre-main']);
+                    }
+                },
+                (err) => {
+                    this.loading.dismiss();
+                    console.log(err);
+                }
+            )
+    }
+}
+
+
+
+
+
