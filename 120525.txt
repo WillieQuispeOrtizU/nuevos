@@ -1,21 +1,13 @@
-{
-    "headers": {
-        "normalizedNames": {},
-        "lazyUpdate": null,
-        "headers": {}
-    },
-    "status": 0,
-    "statusText": "Unknown Error",
-    "url": "http://localhost:4500/getVersion",
-    "ok": false,
-    "name": "HttpErrorResponse",
-    "message": "Http failure response for http://localhost:4500/getVersion: 0 Unknown Error",
-    "error": {
-        "isTrusted": true
-    }
-}
+tipo de documento mantenedor
+nombre
+color
 
-polyfills.9a4f75b2bff0df9b.js:1 
-            
-            
-           POST http://localhost:4500/getVersion net::ERR_CONNECTION_REFUSED
+documentos de usuario
+tipo
+nombre
+documento pdf
+fecha
+
+registros digitales con rango establecido de un mes
+
+revisar que todo el tema activo inactivo funcione
