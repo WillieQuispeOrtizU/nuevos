@@ -1,0 +1,1563 @@
+import { IsArray, IsNumber, IsOptional, IsString } from "class-validator";
+
+export class CreateUserDto {
+
+  @IsOptional()
+  @IsString()
+  document:string;
+
+  @IsOptional()
+  @IsString()
+  email:string;
+
+  @IsOptional()
+  @IsString()
+  password:string;
+
+  @IsOptional()
+  @IsString()
+  fullname:string;
+
+  @IsOptional()
+  @IsNumber()
+  projectId : number;
+
+  @IsOptional()
+  @IsNumber()
+  roleId : number;
+
+  @IsOptional()
+  @IsArray()
+  groupId : any;
+
+  @IsOptional()
+  @IsArray()
+  userId : any;
+
+  @IsOptional()
+  @IsNumber()
+  positionId:number;
+
+  @IsOptional()
+  @IsString()
+  docType:string;
+
+  @IsOptional()
+  @IsString()
+  tokenOneSignal:string;
+
+  @IsOptional()
+  @IsString()
+  signature:string;
+
+  @IsOptional()
+  @IsString()
+  mtcLicNumber:string;
+
+  @IsOptional()
+  mtcLicIssuedAt: Date;
+
+  @IsOptional()
+  mtcLicExpiresAt: Date;
+
+  @IsOptional()
+  @IsString()
+  mineLicNumber: string;
+
+  @IsOptional()
+  mineLicIssuedAt: Date;
+
+  @IsOptional()
+  mineLicExpiresAt: Date;
+
+  @IsOptional()
+  medicalExamIssuedAt: Date;
+
+  @IsOptional()
+  medicalExamExpiresAt: Date;
+
+  @IsOptional()
+  @IsString()
+  ceco: string;
+
+
+}
+
+
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { PrismaService } from 'src/prisma.service';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+import { GlobalFunctions } from 'src/common/functions/global-function';
+import * as bcrypt from 'bcrypt';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
+import * as fs from 'fs';
+import * as fsx from 'fs-extra';
+import * as path from 'path';
+import * as tmp from 'tmp';
+import { Workbook } from 'exceljs';
+import * as xlsx from 'node-xlsx';
+import { MailerService } from 'src/mailerservice/mailerservice.service';
+
+let usersImportedExcel = [];
+@Injectable()
+export class UserService {
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  };
+  constructor(
+    private readonly globalFunctions: GlobalFunctions,
+    private prisma: PrismaService,
+    private readonly mailerService: MailerService,
+  ) { }
+
+  async validateExistUser(document: string, email: string) {
+    let condition = {
+      userId: null,
+      validation: 0,
+    };
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          {
+            document: document,
+          },
+          {
+            email: email
+          }
+        ]
+      },
+    });
+
+    if (user && user.deleted_at == null) {
+      condition.userId = user.id;
+      condition.validation = 1;
+      // if (user.deleted_at != null) {
+      //   condition.validation = 2;
+      // }
+    }
+
+    return condition;
+  }
+  async create(createUserDto: CreateUserDto) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      let { validation, userId } = await this.validateExistUser(
+        createUserDto.document, createUserDto.email,
+      );
+      console.log('validation', createUserDto);
+      if (validation == 1) {
+        this.resp.statusCode = 400;
+        this.resp.message = `Usuario con documento ${createUserDto.document} o ${createUserDto.email} email existente`;
+        this.resp.error = true;
+        this.resp.data = {};
+        return this.resp;
+      } else if (validation == 2) {
+        // const dataCreated = await this.prisma.user.create({
+        //   data: {
+        //     docType:createUserDto.docType,
+        //     document: createUserDto.document,
+        //     email: createUserDto.email,
+        //     password: bcrypt.hashSync(createUserDto.password, 10),
+        //     fullname: createUserDto.fullname,
+        //     positionId:createUserDto.positionId,
+        //     updated_at: null,
+        //     projectId: createUserDto.projectId,
+        //     roleId: createUserDto.roleId,
+        //   },
+        // });
+        // const obj: any = {
+        //   usersId: [dataCreated.id],
+        //   groupsId: createUserDto.groupId,
+        // };
+        // this.assignGroups(obj);
+        // this.resp.message = 'Usuario Creado';
+        // this.resp.data = dataCreated;
+        // const dataUpdated = await this.prisma.user.update({
+        //   data: {
+        //     document: createUserDto.document,
+        //     email: createUserDto.email,
+        //     password: bcrypt.hashSync(createUserDto.password, 10),
+        //     fullname: createUserDto.fullname,
+        //     updated_at: new Date(),
+        //     projectId: createUserDto.projectId,
+        //     roleId: createUserDto.roleId,
+        //     deleted_at: null,
+        //   },
+        //   where: {
+        //     id: userId,
+        //   },
+        // });
+        // const obj: any = {
+        //   usersId: [dataUpdated.id],
+        //   groupsId: createUserDto.groupId,
+        // };
+        // this.assignGroups(obj);
+        this.resp.statusCode = 400;
+        this.resp.message = `Usuario con documento ${createUserDto.document} o ${createUserDto.email} email existente`;
+        this.resp.error = true;
+        this.resp.data = {};
+        return this.resp;
+      } else {
+        console.log('entro aca');
+        const dataCreated = await this.prisma.user.create({
+          data: {
+            docType: createUserDto.docType,
+            document: createUserDto.document,
+            email: createUserDto.email,
+            password: bcrypt.hashSync(createUserDto.password, 10),
+            fullname: createUserDto.fullname,
+            positionId: createUserDto.positionId,
+            updated_at: null,
+            projectId: createUserDto.projectId,
+            roleId: createUserDto.roleId,
+            mtcLicNumber: createUserDto.mtcLicNumber,
+            mtcLicIssuedAt: createUserDto.mtcLicIssuedAt,
+            mtcLicExpiresAt: createUserDto.mtcLicExpiresAt,
+            mineLicNumber: createUserDto.mineLicNumber,
+            mineLicIssuedAt: createUserDto.mineLicIssuedAt,
+            mineLicExpiresAt: createUserDto.mineLicExpiresAt,
+            medExamIssuedAt: createUserDto.medExamIssuedAt,
+            medExamExpiresAt: createUserDto.medExamExpiresAt,
+            ceco: createUserDto.ceco,
+
+          },
+        });
+        const obj: any = {
+          usersId: [dataCreated.id],
+          groupsId: createUserDto.groupId,
+        };
+        this.assignGroups(obj);
+        this.resp.message = 'Usuario Creado';
+        this.resp.data = dataCreated;
+      }
+    } catch (error) {
+      console.log(error);
+      this.resp.statusCode = 400;
+      this.resp.message = error;
+      this.resp.data = {};
+    }
+    return this.resp;
+  }
+
+  async findAll(paginationDto: PaginationDto) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      var {
+        page = 1,
+        limit = 10,
+        order = 'desc',
+        sort = 'id',
+        filter = '[]',
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter,
+      );
+
+      const offset = await this.globalFunctions.getOffsetByPage(page, limit);
+      const data = await this.prisma.user.aggregate({
+        _count: {
+          id: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+      });
+      const { _count } = data;
+      const pages = await this.globalFunctions.getCantPages(_count.id, limit);
+      const responseFilter = await this.globalFunctions.getResponseFilter(
+        limit,
+        order,
+        page,
+        sort,
+        pages,
+        _count.id,
+      );
+
+      const rows = await this.prisma.user.findMany({
+        select: {
+          id: true,
+          document: true,
+          email: true,
+          docType: true,
+          fullname: true,
+          position: {
+            select: {
+              id: true,
+              code: true,
+              description: true
+            }
+          },
+          project: {
+            select: {
+              id: true,
+              code: true,
+              description: true,
+            },
+          },
+          role: {
+            select: {
+              id: true,
+              code: true,
+              description: true,
+            },
+          },
+          mtcLicNumber: true,
+          mtcLicIssuedAt: true,
+          mtcLicExpiresAt: true,
+          mineLicNumber: true,
+          mineLicIssuedAt: true,
+          mineLicExpiresAt: true,
+          medExamIssuedAt: true,
+          medExamExpiresAt: true,
+          ceco: true,
+
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+        },
+        skip: offset,
+        take: objectFilter.cant,
+        orderBy: objectFilter.order,
+      });
+      //get the groups the user is in
+      const groups = await this.prisma.group_user.findMany({
+        where: {
+          userId: {
+            in: rows.map((row) => row.id),
+          },
+          deleted_at: null,
+        },
+      });
+      rows.forEach((row) => {
+        row['groups'] = groups.filter((group) => group.userId === row.id);
+      });
+
+      this.resp.message = 'Usuarios encontrados';
+      this.resp.data = {
+        rows,
+        responseFilter,
+      };
+    } catch (e) {
+      console.log({ error: e });
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+      this.resp.statusCode = 400;
+    }
+    return this.resp;
+  }
+
+  async findOne(id: number) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const user = await this.prisma.user.findUnique({
+        where: {
+          id: id,
+        },
+        select: {
+          id: true,
+          document: true,
+          email: true,
+          docType: true,
+          fullname: true,
+          position: {
+            select: {
+              id: true,
+              code: true,
+              description: true
+            }
+          },
+          project: {
+            select: {
+              id: true,
+              code: true,
+              description: true,
+            },
+          },
+          role: {
+            select: {
+              id: true,
+              code: true,
+              description: true,
+            },
+          },
+          hasSignature: true,
+          mtcLicNumber: true,
+          mtcLicIssuedAt: true,
+          mtcLicExpiresAt: true,
+          mineLicNumber: true,
+          mineLicIssuedAt: true,
+          mineLicExpiresAt: true,
+          medExamIssuedAt: true,
+          medExamExpiresAt: true,
+          ceco: true,
+        },
+      });
+
+
+      if (!user) throw new BadRequestException('Usuario no existente');
+
+      const findGroup = await this.prisma.group_user.findMany({
+        where: {
+          userId: user.id,
+          deleted_at: null
+        },
+        select: {
+          id: true,
+          approver_group: {
+            select: {
+              id: true,
+              code: true,
+              description: true
+            }
+          }
+        }
+      })
+      if (findGroup.length > 0) {
+        user['group'] = findGroup;
+      } else {
+        user['group'] = null;
+      }
+
+      if (user.hasSignature) {
+        const countSignatureUpdate = await this.prisma.audit.count({
+          where: {
+            userId: user.id,
+            deleted_at: null
+          }
+        });
+        user['countSignature'] = countSignatureUpdate;
+
+        const getSignature = await this.prisma.audit.findFirst({
+          where: {
+            deleted_at: null,
+            userId: user.id
+          },
+          select: {
+            signature: true
+          },
+          orderBy: {
+            id: 'desc'
+          }
+        })
+
+        user['signature'] = getSignature.signature;
+      }
+
+      this.resp.message = 'Usuario Encontrado';
+      this.resp.data = user;
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async updateOwnProfile(id: number, updateUserDto: UpdateUserDto) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const userFind = await this.prisma.user.findUnique({
+        where: {
+          id: id,
+        },
+      });
+      if (!userFind) throw new BadRequestException('Usuario no existente');
+
+      var dataUpdate: any;
+      dataUpdate = {
+        docType: updateUserDto.docType,
+        document: updateUserDto.document,
+        email: updateUserDto.email,
+        fullname: updateUserDto.fullname,
+        mtcLicNumber: updateUserDto.mtcLicNumber,
+        mtcLicIssuedAt: updateUserDto.mtcLicIssuedAt,
+        mtcLicExpiresAt: updateUserDto.mtcLicExpiresAt,
+        mineLicNumber: updateUserDto.mineLicNumber,
+        mineLicIssuedAt: updateUserDto.mineLicIssuedAt,
+        mineLicExpiresAt: updateUserDto.mineLicExpiresAt,
+        medExamIssuedAt: updateUserDto.medExamIssuedAt,
+        medExamExpiresAt: updateUserDto.medExamExpiresAt,
+        ceco: updateUserDto.ceco,
+        // positionId:updateUserDto.positionId,
+        updated_at: new Date(),
+        // projectId: updateUserDto.projectId,
+        // roleId: updateUserDto.roleId,
+        //hasSignature : updateUserDto.signature ? true : false
+      };
+      if (updateUserDto.password) {
+        dataUpdate['password'] = bcrypt.hashSync(updateUserDto.password, 10);
+      }
+      const user = await this.prisma.user.update({
+        where: {
+          id: id,
+        },
+        data: dataUpdate,
+      });
+
+      if (updateUserDto.signature) {
+        const photo = updateUserDto.signature.replace(
+          /^data:image\/png;base64,/,
+          '',
+        );
+        const imageBuffer = Buffer.from(photo, 'base64');
+        const imageName = `image_${Date.now()}.png`;
+        const uploadFolderPath = path.join(
+          __dirname,
+          '..',
+          '..',
+          'public/uploads/signatures',
+        );
+        const imagePath = path.join(uploadFolderPath, imageName);
+        await fsx.ensureDir(uploadFolderPath);
+        await fsx.writeFile(imagePath, imageBuffer);
+
+        const saveSignature = 'https://simplexgo.cruzdelsur.com.pe:4000/uploads/signatures/' + imageName;
+
+        const createAudit = await this.prisma.audit.create({
+          data: {
+            signature: saveSignature,
+            userId: id
+          }
+        });
+        const user = await this.prisma.user.update({
+          where: {
+            id: id,
+          },
+          data: {
+            hasSignature: true
+          },
+        });
+
+      }
+      // console.log('updateUserDto', updateUserDto);
+      // const obj: any = {
+      //   usersId: [id],
+      //   groupsId: updateUserDto.groupId,
+      // };
+      // this.assignGroups(obj);
+
+      this.resp.message = 'Usuario actualizado';
+      this.resp.data = user;
+      //assign groups
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      console.log({ e });
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async update(id: number, updateUserDto: UpdateUserDto) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const userFind = await this.prisma.user.findUnique({
+        where: {
+          id: id,
+        },
+      });
+      if (!userFind) throw new BadRequestException('Usuario no existente');
+
+      const existing = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            {
+              document: updateUserDto.document,
+            },
+            {
+              email: updateUserDto.email,
+            }
+          ]
+        },
+      });
+
+      if (existing && existing.id != id) {
+        this.resp.statusCode = 400;
+        this.resp.message = `Usuario con documento ${updateUserDto.document} o ${updateUserDto.email} email existente`;
+        this.resp.error = true;
+        this.resp.data = {};
+        return this.resp;
+      }
+      var dataUpdate: any;
+      dataUpdate = {
+        docType: updateUserDto.docType,
+        document: updateUserDto.document,
+        email: updateUserDto.email,
+        fullname: updateUserDto.fullname,
+        positionId: updateUserDto.positionId,
+        updated_at: null,
+        projectId: updateUserDto.projectId,
+        roleId: updateUserDto.roleId,
+        mtcLicNumber: updateUserDto.mtcLicNumber,
+        mtcLicIssuedAt: updateUserDto.mtcLicIssuedAt,
+        mtcLicExpiresAt: updateUserDto.mtcLicExpiresAt,
+        mineLicNumber: updateUserDto.mineLicNumber,
+        mineLicIssuedAt: updateUserDto.mineLicIssuedAt,
+        mineLicExpiresAt: updateUserDto.mineLicExpiresAt,
+        medExamIssuedAt: updateUserDto.medExamIssuedAt,
+        medExamExpiresAt: updateUserDto.medExamExpiresAt,
+        ceco: updateUserDto.ceco,
+      };
+      if (updateUserDto.password) {
+        dataUpdate['password'] = bcrypt.hashSync(updateUserDto.password, 10);
+        dataUpdate['passwordGenerated'] = false;
+      }
+      const user = await this.prisma.user.update({
+        where: {
+          id: id,
+        },
+        data: dataUpdate,
+      });
+
+      console.log('updateUserDto', updateUserDto);
+      const obj: any = {
+        usersId: [id],
+        groupsId: updateUserDto.groupId,
+      };
+      this.assignGroups(obj);
+
+      this.resp.message = 'Usuario actualizado';
+      this.resp.data = user;
+      //assign groups
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      console.log({ e });
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async remove(id: number) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const user = await this.prisma.user.update({
+        where: {
+          id: id,
+        },
+        data: {
+          deleted_at: new Date(),
+        },
+      });
+
+      const groups = await this.prisma.group_user.findMany({
+        where: {
+          userId: id
+        }
+      })
+
+      if (groups.length > 0 && groups) {
+        const delete_groups = await this.prisma.group_user.updateMany({
+          where: {
+            id: {
+              in: groups.map((el) => el.id),
+            },
+          },
+          data: {
+            deleted_at: new Date(),
+          },
+        });
+      }
+      this.resp.message = 'Usuario eliminado';
+      this.resp.data = {};
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+  async getPilots() {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      const pilots = await this.prisma.user.findMany({
+        where: {
+          role: {
+            description: 'piloto',
+          },
+        },
+      });
+      this.resp.message = 'Pilotos encontrados';
+      this.resp.data = pilots;
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+  async assignGroups(createUserDto: any) {
+    try {
+      this.resp.data = {};
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      const dataToSave: any = [];
+      const { usersId = [], groupsId = [] } = createUserDto;
+      console.log('create', createUserDto);
+      await Promise.all(
+        usersId.map(async (element) => {
+          const userId = element;
+          const currGroups = await this.prisma.group_user.findMany({
+            where: {
+              userId: userId,
+              deleted_at: null,
+            },
+            select: {
+              id: true,
+              approverGroupId: true,
+            },
+          });
+
+          if (currGroups.length > 0) {
+            for (const element of currGroups) {
+              const currId = element.approverGroupId;
+              const stayId = groupsId.includes(currId);
+
+              if (!stayId) {
+                // Eliminar
+                await this.prisma.group_user.update({
+                  where: {
+                    id: element.id,
+                  },
+                  data: {
+                    deleted_at: new Date(),
+                  },
+                });
+              }
+            }
+          }
+
+          for (const subel of groupsId) {
+            const groupUser = await this.prisma.group_user.findFirst({
+              where: {
+                approverGroupId: subel,
+                userId,
+                deleted_at: null,
+              },
+            });
+
+            if (groupUser == null) {
+              const item: Record<string, any> = {};
+              item.approverGroupId = subel;
+              item.userId = userId;
+              item.updated_at = new Date();
+              dataToSave.push(item);
+            }
+          }
+        }),
+      );
+      console.log('dataToSave', dataToSave);
+      if (dataToSave.length > 0) {
+        const result = await this.prisma.group_user.createMany({
+          data: dataToSave,
+        });
+      }
+      const travelUpdate = await this.prisma.group_user.updateMany({
+        where: {
+          id: {
+            in: usersId,
+          },
+        },
+        data: {
+          updated_at: new Date(),
+        },
+      });
+
+      this.resp.data = dataToSave;
+      this.resp.message = 'asignacion Exitosa';
+    } catch (error) {
+      console.log(error);
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(error);
+    }
+
+    return this.resp;
+  }
+
+  async downloadFormatExcel(projectId: number) {
+    let rows = [];
+    let position = await this.prisma.position.findMany({
+      where: {
+        deleted_at: null
+      }
+    });
+    console.log('positions', position);
+    let role = await this.prisma.role.findMany({
+      where: {
+        deleted_at: null
+      }
+    });
+
+    const dropDownPosition = position.map((el) => el.description);
+    const qtyVariablesPositions = position.length;
+    const dropDownRole = role.map((el) => el.description);
+    const qtyVariablesRole = role.length;
+
+    rows.push([
+      'Carnet de Extranjeria',
+      '00000000',
+      'Fullname',
+      'email@email.com',
+      'password',
+      'posicion',
+      'rol',
+      'No'
+    ]);
+
+    let book = new Workbook();
+
+    let sheet = book.addWorksheet(`hoja 1`);
+    let sheetVariables = book.addWorksheet('variables');
+    sheetVariables.state = 'hidden';
+
+    for (let index = 0; index < dropDownPosition.length; index++) {
+      const element = dropDownPosition[index];
+      sheetVariables.getCell('A' + (index + 1)).value = element;
+    }
+
+    for (let index = 0; index < dropDownRole.length; index++) {
+      const element = dropDownRole[index];
+      sheetVariables.getCell('B' + (index + 1)).value = element;
+    }
+
+    rows.unshift([
+      'Tipo de Documento',
+      'Documento',
+      'Nombre',
+      'Email',
+      'Password',
+      'Posicion',
+      'Rol',
+      'Dar de Baja'
+    ])
+    sheet.addRows(rows);
+    const dropDownDocumentType = ['Carnet de Extranjeria', 'DNI'];
+    const dropDownDocumentDelete = ['Si', 'No'];
+
+    const cellWithDropDownPosition = sheet.getCell('F2');
+    const cellWithDropDownRole = sheet.getCell('G2');
+    const cellWithDropDownDelete = sheet.getCell('H2');
+    const cellWithDropDownDocumentType = sheet.getCell('A2');
+
+    const cellWithMultiSelectDropDownGroups = sheet.getCell('I2');
+
+    let convertDocumentType = '"' + dropDownDocumentType.join(',') + '"';
+    let convertDelete = '"' + dropDownDocumentDelete.join(',') + '"';
+
+    const positions = 'variables!$A$1:$A$' + qtyVariablesPositions;
+    const roles = 'variables!$B$1:$B$' + qtyVariablesRole;
+
+
+    cellWithDropDownPosition.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [positions],
+    };
+
+    cellWithDropDownRole.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [roles],
+    };
+    cellWithDropDownDelete.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [convertDelete],
+    };
+
+    cellWithDropDownDocumentType.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [convertDocumentType],
+    };
+
+    let file = await new Promise((resolve, reject) => {
+      tmp.file(
+        {
+          discardDescriptor: true,
+          prefix: 'Importar_Usuarios',
+          postfix: '.xlsx',
+          mode: parseInt('0600', 8),
+        },
+        async (err, file) => {
+          if (err) {
+            throw new BadRequestException(err);
+          }
+          book.xlsx
+            .writeFile(file)
+            .then((_) => {
+              resolve(file);
+            })
+            .catch((err) => {
+              throw new BadRequestException(err);
+            });
+        },
+      );
+    });
+    return file;
+  }
+
+  async downloadUsersImported(projectId: number) {
+    let rows = [];
+    let position = await this.prisma.position.findMany({
+      where: {
+        deleted_at: null
+      }
+    });
+    console.log('positions', position);
+    let role = await this.prisma.role.findMany({
+      where: {
+        deleted_at: null
+      }
+    });
+
+    const dropDownPosition = position.map((el) => el.description);
+    const qtyVariablesPositions = position.length;
+    const dropDownRole = role.map((el) => el.description);
+    const qtyVariablesRole = role.length;
+
+    for (let i = 0; i < usersImportedExcel.length; i++) {
+      const item = usersImportedExcel[i];
+      rows.push([
+        item.docType,        // Tipo de Documento
+        item.document,       // Documento
+        item.fullname,       // Nombre
+        item.email,          // Email
+        item.password,       // Contraseña
+        position.find(pos => pos.id == item.position).description,  // Posicion (nombre)
+        role.find(rol => rol.id == item.role).description,          // Rol (nombre)
+        item.delete,        // Dar de Baja
+      ]);
+
+    }
+
+    let book = new Workbook();
+
+    let sheet = book.addWorksheet(`hoja 1`);
+    let sheetVariables = book.addWorksheet('variables');
+    sheetVariables.state = 'hidden';
+
+    for (let index = 0; index < dropDownPosition.length; index++) {
+      const element = dropDownPosition[index];
+      sheetVariables.getCell('A' + (index + 1)).value = element;
+    }
+
+    for (let index = 0; index < dropDownRole.length; index++) {
+      const element = dropDownRole[index];
+      sheetVariables.getCell('B' + (index + 1)).value = element;
+    }
+
+    rows.unshift([
+      'Tipo de Documento',
+      'Documento',
+      'Nombre',
+      'Email',
+      'Password',
+      'Posicion',
+      'Rol',
+      'Dar de Baja'
+    ])
+    sheet.addRows(rows);
+    const dropDownDocumentType = ['Carnet de Extranjeria', 'DNI'];
+    const dropDownDocumentDelete = ['Si', 'No'];
+
+    const cellWithDropDownPosition = sheet.getCell('F2');
+    const cellWithDropDownRole = sheet.getCell('G2');
+    const cellWithDropDownDelete = sheet.getCell('H2');
+    const cellWithDropDownDocumentType = sheet.getCell('A2');
+
+    const cellWithMultiSelectDropDownGroups = sheet.getCell('I2');
+
+    let convertDocumentType = '"' + dropDownDocumentType.join(',') + '"';
+    let convertDelete = '"' + dropDownDocumentDelete.join(',') + '"';
+
+    const positions = 'variables!$A$1:$A$' + qtyVariablesPositions;
+    const roles = 'variables!$B$1:$B$' + qtyVariablesRole;
+
+
+    cellWithDropDownPosition.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [positions],
+    };
+
+    cellWithDropDownRole.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [roles],
+    };
+    cellWithDropDownDelete.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [convertDelete],
+    };
+
+    cellWithDropDownDocumentType.dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [convertDocumentType],
+    };
+
+    let file = await new Promise((resolve, reject) => {
+      tmp.file(
+        {
+          discardDescriptor: true,
+          prefix: 'Usuarios_Importados',
+          postfix: '.xlsx',
+          mode: parseInt('0600', 8),
+        },
+        async (err, file) => {
+          if (err) {
+            throw new BadRequestException(err);
+          }
+          book.xlsx
+            .writeFile(file)
+            .then((_) => {
+              resolve(file);
+            })
+            .catch((err) => {
+              throw new BadRequestException(err);
+            });
+        },
+      );
+    });
+    usersImportedExcel = [];
+    return file;
+  }
+
+  async uploadFile(file: Express.Multer.File, data: any) {
+    const errors: Record<string, number[]> = {};
+    data = JSON.parse(data);
+    usersImportedExcel = [];
+    var saveData = data.save;
+    var project_id = data.projectId;
+    let positions = await this.prisma.position.findMany({
+      where: {
+        deleted_at: null
+      }
+    });
+    let roles = await this.prisma.role.findMany({
+      where: {
+        deleted_at: null
+      }
+    });
+    let deleteOptions = ['Si', 'No'];
+    try {
+      const workSheetsFromFile = xlsx.parse(file.path);
+      const jsonData_aux = workSheetsFromFile[0].data;
+      let titles = data.schema.map((item) => item.title);
+      let indexes = [];
+
+      for (let i = 0; i < jsonData_aux[0].length; i++) {
+        if (!titles.includes(jsonData_aux[0][i])) {
+          indexes.push(i);
+        }
+      }
+
+      //push into a jsonData2 the items but without the data from the indexes array
+      const jsonData = [];
+      for (let i = 0; i < jsonData_aux.length; i++) {
+        let row = jsonData_aux[i];
+        let row2 = [];
+        for (let j = 0; j < row.length; j++) {
+          if (!indexes.includes(j)) {
+            row2.push(row[j]);
+          }
+        }
+        jsonData.push(row2);
+      }
+      const dataToSave: any = [];
+      const dataToUpdate: any = [];
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        const item: Record<string, any> = {};
+        let isUpdate = false;
+        let actualUser = null
+        let isGoingToDelete = false;
+        if (jsonData[i].length > 0) {
+          for (let j = 0; j < data.schema.length; j++) {
+            const columnName = jsonData[0][j];
+            const isRequired = data.schema[j].required;
+            const cellValue = row[j];
+            /* if (isRequired && !cellValue && columnName != 'Password') {
+              if (!data.schema[j].errors) {
+                data.schema[j].errors = [];
+              }
+              data.schema[j].errors.push(
+                'Campo es obligatorio en la fila ' + (i + 1),
+              );
+            } else { */
+            if (columnName == 'Documento') {
+              if (cellValue) {
+                actualUser = await this.prisma.user.findFirst({
+                  where: {
+                    document: cellValue.toString(),
+                    /* deleted_at: null, */
+                  },
+                });
+                if (actualUser) {
+                  if (actualUser.projectId != project_id) {
+
+                    console.log('USUARIO YA EXISTENTE', actualUser);
+                    saveData = false;
+                    if (!data.schema[j].errors) {
+                      data.schema[j].errors = [];
+                    }
+                    data.schema[j].errors.push(
+                      'Usuario ya existente en otro proyecto en la fila ' + (i + 1),
+                    );
+                  } else {
+                    isUpdate = true;
+                    console.log('USUARIO YA EXISTENTE EN ESTE PROYECTO, SE ACTUALIZARÁ', actualUser);
+                    item.id = actualUser.id;
+                  }
+                  //
+                }
+              }
+            }
+            item.projectId = project_id;
+
+            //validamos si es update o create
+            switch (columnName) {
+              case 'Tipo de Documento':
+                if (cellValue) {
+                  item.docType = cellValue.toString();
+                } else {
+                  saveData = false;
+                  if (!data.schema[j].errors) {
+                    data.schema[j].errors = [];
+                  }
+                  data.schema[j].errors.push(
+                    'Tipo de Documento es obligatorio en la fila ' + (i + 1),
+                  );
+                }
+                break;
+              case 'Documento':
+                if (cellValue) {
+                  item.document = cellValue.toString();
+                } else {
+                  saveData = false;
+                  if (!data.schema[j].errors) {
+                    data.schema[j].errors = [];
+                  }
+                  data.schema[j].errors.push(
+                    'Documento es obligatorio en la fila ' + (i + 1),
+                  );
+                }
+                break;
+              case 'Dar de Baja':
+                if (cellValue) {
+                  item.delete = cellValue.toString();
+                  console.log('item.delete', item.delete);
+                  console.log('deleteOptions', deleteOptions);
+                  console.log("Validation", deleteOptions.some(pos => pos != item.delete))
+                  isGoingToDelete = cellValue.toString() == 'Si' ? true : false;
+                  if (!isUpdate && item.delete == 'Si') {
+                    saveData = false;
+                    if (!data.schema[j].errors) {
+                      data.schema[j].errors = [];
+                    }
+                    data.schema[j].errors.push(
+                      'No se puede dar de baja un usuario a agregar en la fila ' + (i + 1),
+                    );
+                  }
+                } else {
+                  saveData = false;
+                  if (!data.schema[j].errors) {
+                    data.schema[j].errors = [];
+                  }
+                  data.schema[j].errors.push(
+                    'Dar de Baja es obligatorio en la fila ' + (i + 1),
+                  );
+                }
+                break;
+              case 'Nombre':
+                if (actualUser) {
+                  item.fullname = cellValue ? cellValue.toString() : actualUser.fullname;
+                } else {
+                  if (cellValue) {
+                    item.fullname = cellValue.toString();
+                  } else {
+                    saveData = false;
+                    if (!data.schema[j].errors) {
+                      data.schema[j].errors = [];
+                    }
+                    data.schema[j].errors.push(
+                      'Nombre es obligatorio en la fila ' + (i + 1),
+                    );
+                    console.log("supuesto nombre", item.fullname, cellValue);
+                  }
+                }
+                break;
+              case 'Email':
+                if (actualUser) {
+                  item.email = cellValue ? cellValue.toString() : actualUser.email;
+                } else {
+                  if (cellValue) {
+                    item.email = cellValue.toString();
+                  } else {
+                    saveData = false;
+                    if (!data.schema[j].errors) {
+                      data.schema[j].errors = [];
+                    }
+                    data.schema[j].errors.push(
+                      'Email es obligatorio en la fila ' + (i + 1),
+                    );
+                  }
+                }
+                break;
+              case 'Password':
+                if (actualUser) {
+                  item.password = cellValue ? cellValue.toString() : 's4meP4s$w0rd';
+                } else {
+                  if (cellValue) {
+                    item.password = cellValue.toString();
+                  } else {
+                    item.password = this.globalFunctions.generateRandomPassword();
+                    /* const randomPasswords = this.globalFunctions.generateRandomPassword(item.fullname.length); */
+                    /* item.password = bcrypt.hashSync(randomPasswords, 10); */
+                    item.passwordGenerated = true;
+                  }
+                }
+                break;
+              case 'Posicion':
+                if (actualUser) {
+                  if (cellValue) {
+                    item.position = cellValue.toString();
+                    if (!positions.some(pos => pos.description == item.position)) {
+                      saveData = false;
+                      if (!data.schema[j].errors) {
+                        data.schema[j].errors = [];
+                      }
+                      data.schema[j].errors.push(
+                        'Posicion es incorrecta en la fila ' + (i + 1),
+                      );
+                    }
+                  } else {
+                    item.position = positions.find(pos => pos.id === actualUser.positionId)?.description || null;
+                  }
+                } else {
+                  if (cellValue) {
+                    item.position = cellValue.toString();
+                    if (!positions.some(pos => pos.description == item.position)) {
+                      saveData = false;
+                      if (!data.schema[j].errors) {
+                        data.schema[j].errors = [];
+                      }
+                      data.schema[j].errors.push(
+                        'Posicion es incorrecta en la fila ' + (i + 1),
+                      );
+                    }
+                  } else {
+                    saveData = false;
+                    if (!data.schema[j].errors) {
+                      data.schema[j].errors = [];
+                    }
+                    data.schema[j].errors.push(
+                      'Posicion es obligatoria en la fila ' + (i + 1),
+                    );
+                  }
+                }
+                break;
+              case 'Rol':
+                if (actualUser) {
+                  if (cellValue) {
+                    item.role = cellValue.toString();
+                    if (!roles.some(pos => pos.description == item.role)) {
+                      saveData = false;
+                      if (!data.schema[j].errors) {
+                        data.schema[j].errors = [];
+                      }
+                      data.schema[j].errors.push(
+                        'Rol es incorrecto en la fila ' + (i + 1),);
+                    }
+                  } else {
+                    item.role = roles.find(pos => pos.id === actualUser.roleId)?.description || null;
+                  }
+                } else {
+                  if (cellValue) {
+                    item.role = cellValue.toString();
+                    if (!roles.some(pos => pos.description == item.role)) {
+                      saveData = false;
+                      if (!data.schema[j].errors) {
+                        data.schema[j].errors = [];
+                      }
+                      data.schema[j].errors.push(
+                        'Rol es incorrecto en la fila ' + (i + 1),);
+                    }
+                  } else {
+                    saveData = false;
+                    if (!data.schema[j].errors) {
+                      data.schema[j].errors = [];
+                    }
+                    data.schema[j].errors.push(
+                      'Rol es obligatorio en la fila ' + (i + 1),
+                    );
+                  }
+                }
+                break;
+              default:
+                break;
+            }
+            /* } */
+          }
+          if (isUpdate) {
+            dataToUpdate.push(item);
+          } else {
+            dataToSave.push(item);
+          }
+        }
+      }
+
+      // Eliminar el archivo después de procesarlo
+      fs.unlink(file.path, (err) => {
+        if (err) {
+          console.error('Error al eliminar el archivo:', err);
+        } else {
+          console.log('Archivo eliminado correctamente');
+        }
+      });
+      if (data.save && saveData) {
+
+        //CREATING NEW USERS
+        for (let i = 0; i < dataToSave.length; i++) {
+          dataToSave[i].position = positions.find(pos => pos.description == dataToSave[i].position).id;
+          dataToSave[i].role = roles.find(pos => pos.description == dataToSave[i].role).id;
+
+          const createdUsers = await this.prisma.user.create({
+            data: {
+              docType: dataToSave[i].docType,
+              document: dataToSave[i].document,
+              email: dataToSave[i].email,
+              password: bcrypt.hashSync(dataToSave[i].password, 10),
+              passwordGenerated: dataToSave[i].passwordGenerated ? true : false,
+              fullname: dataToSave[i].fullname,
+              positionId: dataToSave[i].position,
+              roleId: dataToSave[i].role,
+              projectId: dataToSave[i].projectId,
+              updated_at: null,
+            },
+          });
+          console.log('createdUsers', createdUsers);
+        }
+
+        //UPDATING USERS
+        for (let i = 0; i < dataToUpdate.length; i++) {
+          dataToUpdate[i].position = positions.find(pos => pos.description == dataToUpdate[i].position).id;
+          dataToUpdate[i].role = roles.find(pos => pos.description == dataToUpdate[i].role).id;
+
+          const updatedUsers = await this.prisma.user.update({
+            where: {
+              id: dataToUpdate[i].id,
+              document: dataToUpdate[i].document,
+              /* deleted_at: null, */
+            },
+            data: dataToUpdate[i].delete == 'No' && dataToUpdate[i].password != 's4meP4s$w0rd'
+              ? {
+                docType: dataToUpdate[i].docType,
+                document: dataToUpdate[i].document,
+                email: dataToUpdate[i].email,
+                password: bcrypt.hashSync(dataToUpdate[i].password, 10),
+                passwordGenerated: dataToUpdate[i].passwordGenerated ? true : false,
+                fullname: dataToUpdate[i].fullname,
+                positionId: dataToUpdate[i].position,
+                roleId: dataToUpdate[i].role,
+                projectId: dataToUpdate[i].projectId,
+                updated_at: new Date(),
+                deleted_at: null,
+              }
+              : dataToUpdate[i].delete == 'No' && dataToUpdate[i].password == 's4meP4s$w0rd'
+                ? {
+                  docType: dataToUpdate[i].docType,
+                  document: dataToUpdate[i].document,
+                  email: dataToUpdate[i].email,
+                  fullname: dataToUpdate[i].fullname,
+                  positionId: dataToUpdate[i].position,
+                  roleId: dataToUpdate[i].role,
+                  projectId: dataToUpdate[i].projectId,
+                  updated_at: new Date(),
+                  deleted_at: null,
+                }
+                : {
+                  updated_at: new Date(),
+                  deleted_at: new Date(),
+                },
+          });
+          console.log('updatedUsers', updatedUsers);
+
+        }
+      }
+      usersImportedExcel = dataToSave.concat(dataToUpdate);
+      console.log('usersImportedExcel', usersImportedExcel);
+      console.log('dataToSave', dataToSave);
+      console.log('dataToUpdate', dataToUpdate);
+
+      return { success: true, data };
+    } catch (error) {
+      console.error(error);
+
+      this.resp.error = true;
+      this.resp.message = error.message;
+      this.resp.statusCode = 500;
+      return this.resp;
+    }
+  }
+  async updateOneSignal(userId: number, createUserDto: CreateUserDto) {
+    try {
+      this.resp.data = {}
+      this.resp.statusCode = 200;
+      this.resp.error = false;
+      const { tokenOneSignal } = createUserDto;
+      const user = await this.prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          tokenOneSignal: tokenOneSignal
+        },
+      });
+      this.resp = {
+        statusCode: 200,
+        error: false,
+        data: {
+          ...user,
+        },
+      };
+    } catch (error) {
+      this.resp = {
+        message: error.message,
+        statusCode: 400,
+        error: true,
+        data: { userId, tokenOneSignal: createUserDto.tokenOneSignal },
+      };
+    }
+    return this.resp;
+  }
+
+  async restorePassword(createUserDto: CreateUserDto) {
+    try {
+      this.resp.error = false;
+      this.resp.message = "";
+      this.resp.statusCode = 200;
+
+      const { email } = createUserDto;
+      console.log("email", email)
+      const user = await this.prisma.user.findFirst({
+        where: {
+          email: email,
+          deleted_at: null
+        }
+      });
+      //if email not found return error
+
+      if (!user) {
+        this.resp.error = true;
+        this.resp.message = "Usuario no encontrado";
+        this.resp.statusCode = 400;
+        return this.resp;
+      }
+      //generate new password
+      const newPassword = this.globalFunctions.generateRandomPassword(user.fullname.length);
+
+      //update password
+      const userUpdated = await this.prisma.user.update({
+        where: {
+          id: user.id
+        },
+        data: {
+          password: bcrypt.hashSync(newPassword, 10),
+          passwordGenerated: true
+        }
+      });
+
+      //send email with new password
+      const mailOptions = {
+        from: process.env.SMTP_EMAIL,
+        to: user.email,
+        subject: 'Restauración de contraseña',
+        text: `Hola ${user.fullname}, su nueva contraseña es: ${newPassword}`,
+      };
+
+      this.mailerService.sendEmail(mailOptions);
+
+      this.resp.message = "Contraseña restaurada";
+      this.resp.data = userUpdated;
+    } catch (e) {
+      this.resp.error = true;
+      this.resp.message = e.message;
+      this.resp.statusCode = 500;
+    }
+    return this.resp;
+  }
+  async generateMassivePassword() {
+    try {
+      this.resp.error = false;
+      this.resp.message = "";
+      this.resp.statusCode = 200;
+
+      const usersToUpdate = await this.prisma.user.findMany({
+        select: {
+          id: true,
+          password: true,
+          fullname: true,
+          document: true
+        },
+        where: {
+          password: 'novalue'
+        }
+      })
+
+      const randomPasswords = usersToUpdate.map((user) => this.globalFunctions.generateRandomPassword(user.fullname.length));
+
+      const updatedPasswords: { id: number, document: string, password: string }[] = [];
+      await this.prisma.$transaction(async (tx) => {
+        for (let i = 0; i < usersToUpdate.length; i++) {
+          const updatedUser = await tx.user.update({
+            where: { id: usersToUpdate[i].id },
+            data: { password: bcrypt.hashSync(randomPasswords[i], 10), passwordGenerated: true },
+          });
+          updatedPasswords.push({ id: updatedUser.id, document: updatedUser.document, password: randomPasswords[i] });
+        }
+      }, { timeout: 100000 });
+      this.resp.data = updatedPasswords;
+    } catch (e) {
+      this.resp.error = true;
+      this.resp.message = e.message;
+      this.resp.statusCode = 500;
+    }
+    return this.resp;
+  }
+
+}
+
