@@ -1,0 +1,781 @@
+import { IsOptional, IsString } from "class-validator";
+
+export class CreateProjectDto {
+  
+  @IsOptional()
+  @IsString()
+  code : string;
+
+  @IsOptional()
+  @IsString()
+  description:string;
+
+  @IsOptional()
+  @IsString()
+  induction:string;
+
+  @IsOptional()
+  @IsString()
+  clientArea:string;
+
+  @IsOptional()
+  projectId:number;
+
+  @IsOptional()
+  sedeId:number;
+
+}
+
+
+///////////////////////////////////////////////////////////////
+
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { CreateProjectDto } from './dto/create-project.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
+import { PrismaService } from 'src/prisma.service';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { GlobalFunctions } from 'src/common/functions/global-function';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+
+@Injectable()
+export class ProjectService {
+
+  constructor(private prisma: PrismaService, private readonly globalFunctions: GlobalFunctions) { }
+  //resp scheme for returning data in response
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  }
+
+  async create(createProjectDto: CreateProjectDto) {
+    this.resp.data = {}
+    this.resp.error = false
+    try {
+      this.resp.statusCode = 200;    
+
+      const createdProject = await this.prisma.project.create({
+        data: {
+          code: createProjectDto.code,
+          description: createProjectDto.description,
+          induction: createProjectDto.induction,
+          clientArea:createProjectDto.clientArea
+        }
+      })
+
+      this.resp.message = "Proyecto creado";
+      this.resp.data = createdProject;
+
+    } catch (e) {
+      this.resp.error = true
+      this.resp.statusCode = 500;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async findAll(paginationDto: PaginationDto) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      var {
+        page = 1,
+        limit = 10,
+        order = "desc",
+        sort = "id",
+        filter = "[]",
+
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter
+      );
+
+      const offset = await this.globalFunctions.getOffsetByPage(page, limit);
+      const data = await this.prisma.project.aggregate({
+        _count: {
+          id: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains
+        },
+      });
+      const { _count } = data;
+      const pages = await this.globalFunctions.getCantPages(_count.id, limit);
+      const responseFilter = await this.globalFunctions.getResponseFilter(
+        limit,
+        order,
+        page,
+        sort,
+        pages,
+        _count.id
+      );
+
+      const rows = await this.prisma.project.findMany({
+        select: {
+          id: true,
+          code: true,
+          description: true,
+          induction:true,
+          clientArea:true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+
+        },
+        skip: offset,
+        take: objectFilter.cant,
+        orderBy: objectFilter.order,
+      });
+      this.resp.data = {
+        rows, responseFilter
+      }
+    } catch (e) {
+      console.log({ error: e })
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+      this.resp.statusCode = 400;
+    }
+    return this.resp
+  }
+
+  async findOne(id: number) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const project = await this.prisma.project.findUnique({
+        where: {
+          id: id
+        }
+      });
+
+      if(!project){
+        throw new BadRequestException('Proyecto no existente');
+      }
+
+      this.resp.message = "";
+      this.resp.data = project;
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async update(id: number, updateProjectDto: UpdateProjectDto) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      const projectFind = await this.prisma.project.findUnique({
+        where: {
+          id: id
+        }
+      });
+      if (!projectFind)
+        throw new BadRequestException('Proyecto no existente');
+
+      const updatedProject = await this.prisma.project.update({
+        where: {
+          id: id
+        },
+        data: {
+          code: updateProjectDto.code,
+          description: updateProjectDto.description,
+          induction:updateProjectDto.induction,
+          clientArea:updateProjectDto.clientArea,
+          updated_at: new Date()
+        }
+      });
+      this.resp.message = "Proyecto actualizado";
+      this.resp.data = updatedProject;
+    } catch (e) {
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async remove(id: number) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      await this.prisma.project.update({
+        where: {
+          id: id
+        },
+        data: {
+          deleted_at: new Date()
+        }
+      });
+      this.resp.message = "Proyecto eliminado";
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async downloadGeneral(userId:number) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      //get sedes by group_user
+      const getUser = await this.prisma.user.findUnique({
+        where:{
+          id:userId,
+        },
+        select:{
+          id:true,
+          projectId:true,
+        }
+      })
+
+      const getGroupUser = await this.prisma.group_user.findMany({
+        where:{
+          userId:getUser.id,
+          deleted_at:null
+        },
+        select:{
+          approverGroupId:true
+        }
+      })
+
+      const getGroupUserIds = getGroupUser.map((el)=>el.approverGroupId);
+
+      const getSedes = await this.prisma.approver_group.findMany({
+        where:{
+          id:{
+            in:getGroupUserIds
+          },
+          deleted_at:null
+        },
+        select:{
+          id:true,
+          sedeId:true
+        }
+      })
+
+      const getSedesIds = getSedes.map((el)=>el.sedeId);
+
+      const getSedesData = await this.prisma.sede.findMany({
+        where:{
+          id:{
+            in:getSedesIds
+          },
+          deleted_at:null
+        },
+        select:{
+          id:true,
+          description:true
+        }
+      })
+
+      //get forms_admin I can create
+      //get admin_header by user
+      const getAdminHeader = await this.prisma.admin_header.findMany({
+        where:{
+          projectId:getUser.projectId,
+          deleted_at:null,
+          sedeId:{
+            in:getSedesIds
+          }
+        },
+        select:{
+          id:true
+        }
+      })
+      //get its details
+      const getAdminDetail = await this.prisma.admin_detail.findMany({
+        where:{
+          admin_headerId:{
+            in:getAdminHeader.map((el)=>el.id)
+          },
+          groupUsersId:{
+            in:getGroupUserIds
+          },
+          deleted_at:null
+        },
+        select:{
+          form:{
+            select:{
+              id:true,
+              name:true
+            }
+          },
+          admin_header:{
+            select:{
+              sede:{
+                select:{
+                  id:true,
+                  description:true
+                }
+              }
+            }
+          }
+        }
+      })
+      let canCreateForms = [];
+     for(let i = 0; i< getSedesData.length; i++){
+        const item = {
+          sedeId:getSedesData[i].id,
+          sedeDescription:getSedesData[i].description,
+          forms:[]
+        }
+        for(let j = 0; j< getAdminDetail.length; j++){
+          if(getAdminDetail[j].admin_header.sede.id == getSedesData[i].id){
+            item.forms.push({
+              formId:getAdminDetail[j].form.id,
+              formName:getAdminDetail[j].form.name
+            });
+          }
+        }
+        canCreateForms.push(item);
+     }
+
+      var data:any = {
+        services:['Interno','Externo', 'PDP Interno', 'PDP Externo'],
+        activities:["Abastecimiento de combustible","Viaje en vacío","Prueba en ruta","Mantenimiento de la unidad"],
+        statusForms:[{
+          0:"Pendiente",
+          1:"En Proceso",
+          2:"Aprobado",
+          3:"Rechazado"
+        }],
+        statusParent:[{
+          0:"No iniciado",
+          1:"En Proceso",
+          2:"Finalizado",
+          3:"Cancelado"
+        }],
+        sedes:getSedesData,
+        canCreateForms:canCreateForms
+      };
+      
+      this.resp.message = "";
+      this.resp.data = data;
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = e.message;
+    }
+    return this.resp;
+  }
+	async getCountReport(userId:number){
+		try{
+			this.resp.data = {};
+			this.resp.error = false;
+			this.resp.statusCode = 200;
+			//total of Travels
+      const projectId = await this.prisma.user.findUnique({
+        where:{
+          id:userId,
+          deleted_at:null,
+        },
+        select:{
+          projectId:true
+        }
+      })
+			const getTotalServices = await this.prisma.travel.count({
+				where:{
+					projectId:projectId.projectId
+				}
+			})
+
+			const getNoStartServices = await this.prisma.travel.count({
+				where:{
+					deleted_at:null,
+					projectId:projectId.projectId,
+					state:0
+				}
+			})
+
+			const getInProcessServices = await this.prisma.travel.count({
+				where:{
+					deleted_at:null,
+					projectId:projectId.projectId,
+					state:1
+				}
+			})
+
+			const getApprovedServices = await this.prisma.travel.count({
+				where:{
+					deleted_at:null,
+					projectId:projectId.projectId,
+					state:2
+				}
+			})
+
+			const getRejectedServices = await this.prisma.travel.count({
+				where:{
+					deleted_at:{
+						not:null
+					},
+					projectId:projectId.projectId,
+				}
+			})
+
+			//total of form
+			const getTravelsId = await this.prisma.travel.findMany({
+				where:{
+					projectId:projectId.projectId,
+					deleted_at:null
+				},
+				select:{
+					id:true,
+				}
+			})
+
+			//variables for report formTravels
+			let totalFormTravels = 0;
+			let pendingFormTravels = 0;
+			let inProcessFormTravel = 0;
+			let rejectedFormTravel = 0;
+			let approvedFormTravel = 0;
+
+			const getAllFormsTravels = await this.prisma.form_travel.findMany({
+				where:{
+					travelId:{
+						in:getTravelsId.map((el)=>el.id)
+					},
+					deleted_at:null,
+				}
+			})
+
+			totalFormTravels = getAllFormsTravels.length;
+			//for loop to add each occurence to the variables
+
+			for(let i = 0; i < getAllFormsTravels.length; i++){
+        // Check for in-process form travels
+        if(getAllFormsTravels[i].currentLvl == 2 && getAllFormsTravels[i].state == 2){
+            // Condition when both groupLvl1Id and groupLvl2Id are not null
+            if(getAllFormsTravels[i].groupLvl1Id != null && getAllFormsTravels[i].groupLvl2Id != null){
+                inProcessFormTravel++;
+            }
+           
+            // Condition when groupLvl1Id is not null and groupLvl2Id is null
+            else if(getAllFormsTravels[i].groupLvl1Id != null && getAllFormsTravels[i].groupLvl2Id === null){
+                approvedFormTravel=approvedFormTravel+1;
+            }
+            
+        }
+        else if(getAllFormsTravels[i].state == 1 && getAllFormsTravels[i].currentLvl == 1){
+            inProcessFormTravel++;
+        }
+        else if(getAllFormsTravels[i].state == 0 && getAllFormsTravels[i].currentLvl == 0){
+            pendingFormTravels++;
+        }
+        else if(getAllFormsTravels[i].state == 2 && getAllFormsTravels[i].currentLvl == 3){
+            approvedFormTravel++;
+        }
+        //in case of rejected forms
+        const searchFormUserLast = await this.prisma.form_user.findFirst({
+          where:{
+            formTravelId:getAllFormsTravels[i].id,
+            deleted_at:null,
+          },
+          select:{
+            approval_status:true
+          },
+          orderBy:{
+            id:'desc'
+          }
+        })
+        if(searchFormUserLast){
+          if(searchFormUserLast.approval_status == "Rechazado"){
+            rejectedFormTravel++;
+          }
+        }
+        
+			}
+
+      //total of Activies
+			const getTotalActivities = await this.prisma.activity.count({
+				where:{
+					deleted_at:null,
+					projectId:projectId.projectId
+				}
+			})
+
+			const getNoStartActivities = await this.prisma.activity.count({
+				where:{
+					deleted_at:null,
+					projectId:projectId.projectId,
+					state:0
+				}
+			})
+
+			const getInProcessActivities = await this.prisma.activity.count({
+				where:{
+					deleted_at:null,
+					projectId:projectId.projectId,
+					state:1
+				}
+			})
+
+			const getApprovedActivities = await this.prisma.activity.count({
+				where:{
+					deleted_at:null,
+					projectId:projectId.projectId,
+					state:2
+				}
+			})
+
+			const getRejectedActivities = await this.prisma.activity.count({
+				where:{
+					deleted_at:{
+						not:null
+					},
+					projectId:projectId.projectId,
+				}
+			})
+			//total of formTravels
+			const getActivitiesId = await this.prisma.activity.findMany({
+				where:{
+					projectId:projectId.projectId,
+					deleted_at:null
+				},
+				select:{
+					id:true,
+				}
+			})
+
+			//variables for report formTravels
+			let totalFormActivities = 0;
+			let pendingFormActivities = 0;
+			let inProcessFormActivities = 0;
+			let rejectedFormActivities = 0;
+			let approvedFormActivities = 0;
+
+			const getAllFormActivities = await this.prisma.form_activity.findMany({
+				where:{
+					activityId:{
+						in:getActivitiesId.map((el)=>el.id)
+					},
+					deleted_at:null,
+				}
+			})
+
+			totalFormActivities = getAllFormActivities.length;
+			//for loop to add each occurence to the variables
+
+			for(let i = 0;i<getAllFormActivities.length;i++){
+				 // Check for in-process form travels
+         if(getAllFormActivities[i].currentLvl == 2 && getAllFormActivities[i].state == 2){
+          // Condition when both groupLvl1Id and groupLvl2Id are not null
+          if(getAllFormActivities[i].groupLvl1Id != null && getAllFormActivities[i].groupLvl2Id != null){
+            inProcessFormActivities++;
+          }
+          // Condition when groupLvl1Id is not null and groupLvl2Id is null
+          else if(getAllFormActivities[i].groupLvl1Id != null && getAllFormActivities[i].groupLvl2Id === null){
+            approvedFormActivities=approvedFormActivities+1;
+          }
+          
+      }
+      else if(getAllFormActivities[i].state == 1 && getAllFormActivities[i].currentLvl == 1){
+        inProcessFormActivities++;
+      }
+      else if(getAllFormActivities[i].state == 0 && getAllFormActivities[i].currentLvl == 0){
+        pendingFormActivities++;
+      }
+      else if(getAllFormActivities[i].state == 2 && getAllFormActivities[i].currentLvl == 3){
+        approvedFormActivities++;
+      }
+        //in case of rejected forms
+        const searchFormUserLast = await this.prisma.form_activity_user.findFirst({
+          where:{
+            formActivityId:getAllFormsTravels[i].id,
+            deleted_at:null,
+          },
+          select:{
+            approval_status:true
+          },
+          orderBy:{
+            id:'desc'
+          }
+        })
+        if(searchFormUserLast){
+          if(searchFormUserLast.approval_status == "Rechazado"){
+            rejectedFormActivities++;
+          }  
+        }
+			}
+
+      let data = [
+        {
+          label:"servicios",
+          qtyTotal:getTotalServices,
+          qtyTotalForms:totalFormTravels,
+          contentGeneral:[
+            {
+              label:"No iniciado",
+              qty:getNoStartServices,
+            },
+            {
+              label:"En proceso",
+              qty:getInProcessServices,
+            },
+            {
+              label:"Aprobado",
+              qty:getApprovedServices,
+            },
+            {
+              label:"Rechazado",
+              qty:getRejectedServices,
+            }
+          ],
+          contentForm:[
+            {
+              label:"No iniciado",
+              qty:pendingFormTravels,
+            },
+            {
+              label:"En proceso",
+              qty:inProcessFormTravel,
+            },
+            {
+              label:"Aprobado",
+              qty:approvedFormTravel,
+            },
+            {
+              label:"Rechazado",
+              qty:rejectedFormTravel,
+            }
+          ]
+        },
+        {
+          label:"actividades",
+          qtyTotal:getTotalActivities,
+          qtyTotalForms:totalFormActivities,
+          contentGeneral:[
+            {
+              label:"No iniciado",
+              qty:getNoStartActivities,
+            },
+            {
+              label:"En proceso",
+              qty:getInProcessActivities,
+            },
+            {
+              label:"Aprobado",
+              qty:getApprovedActivities,
+            },
+            {
+              label:"Rechazado",
+              qty:getRejectedActivities,
+            }
+          ],
+          contentForm:[
+            {
+              label:"No iniciado",
+              qty:pendingFormActivities,
+            },
+            {
+              label:"En proceso",
+              qty:inProcessFormActivities,
+            },
+            {
+              label:"Aprobado",
+              qty:approvedFormActivities,
+            },
+            {
+              label:"Rechazado",
+              qty:rejectedFormActivities,
+            }
+          ]
+        }
+      ]
+
+      this.resp.data = data;
+      this.resp.message = "Reporte exitoso";
+		}catch(e){
+			this.resp.error = true;
+			this.resp.message = e.message;
+			this.resp.statusCode = 400;
+		}
+		return this.resp;
+	}
+
+  async testingService(createProjectDto: CreateProjectDto) {
+    try{  
+      this.resp.data = {}
+      this.resp.error = false
+      this.resp.statusCode = 200;
+      this.resp.message = "";
+      const {projectId, sedeId} = createProjectDto;
+      
+      const getHeader = await this.prisma.admin_header.findFirst({
+        where:{
+          projectId:projectId,
+          sedeId:sedeId,
+          deleted_at:null
+        }
+      })
+
+      const getAdminDetail = await this.prisma.admin_detail.findMany({
+        where:{
+          admin_headerId:getHeader.id,
+          deleted_at:null
+        }
+      })
+
+      const getGroupUsers = getAdminDetail.map((el)=>el.groupUsersId);
+      //get users id by group_user
+      let getUsers = await this.prisma.group_user.findMany({
+        where:{
+          approverGroupId:{
+            in:getGroupUsers
+          },
+          deleted_at:null
+        },
+        select:{
+          userId:true
+        }
+      })
+
+      const usersId = getUsers.map((el)=>el.userId);
+      //create record in form_admin for each group_user
+      let createFormAdmin = {};
+      for(let i = 0; i< usersId.length; i++){
+          for(let j = 0; j< getAdminDetail.length; j++){
+            createFormAdmin = await this.prisma.form_admin.create({
+              data:{
+                groupLvl1Id:getAdminDetail[j].groupLvl1Id,
+                groupLvl2Id:getAdminDetail[j].groupLvl2Id,
+                state:0,
+                currentLvl:0,
+                attemptNumber:0,
+                userId:usersId[i],
+                formId:getAdminDetail[j].formId,
+                admin_headerId:getHeader.id,
+                isRequiredApproved:getAdminDetail[j].isRequiredApproved,
+              }
+            });
+        }
+      }
+      this.resp.data = createFormAdmin;
+      this.resp.message = "Formularios creados exitosamente";
+    }catch(e){
+      this.resp.error = true;
+      this.resp.message = e.message;
+      this.resp.statusCode = 400;
+    }
+    return this.resp;
+  }
+
+}
