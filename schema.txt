@@ -11,66 +11,71 @@ datasource db {
 }
 
 model project {
-  id              Int               @id @default(autoincrement())
-  code            String            @db.VarChar(100)
-  description     String            @db.Text
-  induction       String            @db.VarChar(100)
-  clientArea      String            @db.VarChar(100)
-  created_at      DateTime          @default(now())
-  updated_at      DateTime?         @default(now())
-  deleted_at      DateTime?
-  user            user[]
-  travel          travel[]
-  sede            sede[]
-  approver_group  approver_group[]
-  header          header[]
-  activity        activity[]
-  admin_header    admin_header[]
-  admin           admin[]
-  generic_table generic_table[]
+  id                Int              @id @default(autoincrement())
+  code              String           @db.VarChar(100)
+  description       String           @db.Text
+  induction         String?          @db.VarChar(100)
+  clientArea        String?          @db.VarChar(100)
+  business_name     String?          @db.VarChar(100)
+  ruc               String?          @db.VarChar(100)
+  business_address  String?          @db.VarChar(100)
+  business_activity String?          @db.VarChar(100)
+  employeeQty       Int?
+  created_at        DateTime         @default(now())
+  updated_at        DateTime?        @default(now())
+  deleted_at        DateTime?
+  user              user[]
+  generic_table     generic_table[]
+  travel            travel[]
+  sede              sede[]
+  approver_group    approver_group[]
+  header            header[]
+  activity          activity[]
+  admin_header      admin_header[]
+  admin             admin[]
 }
 
 model sede {
-  id          Int       @id @default(autoincrement())
-  code        String    @db.VarChar(100)
-  description String    @db.Text
-  created_at  DateTime  @default(now())
-  updated_at  DateTime? @default(now())
-  deleted_at  DateTime?
-  projectId   Int?
+  id             Int              @id @default(autoincrement())
+  code           String           @db.VarChar(100)
+  description    String           @db.Text
+  created_at     DateTime         @default(now())
+  updated_at     DateTime?        @default(now())
+  deleted_at     DateTime?
+  projectId      Int?
   approver_group approver_group[]
-  project     project?  @relation(fields: [projectId], references: [id])
-  header      header[]
-  travel      travel[]
-  activity    activity[]
-  admin_header admin_header[]
-  admin       admin[]
+  project        project?         @relation(fields: [projectId], references: [id])
+  header         header[]
+  travel         travel[]
+  activity       activity[]
+  admin_header   admin_header[]
+  admin          admin[]
 }
 
 model approver_group {
-  id          Int          @id @default(autoincrement())
-  code        String       @db.VarChar(100)
-  description String       @db.Text
-  created_at  DateTime     @default(now())
-  updated_at  DateTime?    @default(now())
-  deleted_at  DateTime?
-  projectId   Int?
-  project     project?     @relation(fields: [projectId], references: [id])
-  sedeId      Int?
-  sede        sede?        @relation(fields: [sedeId], references: [id])
-  group_user  group_user[]
-  groupFirst  detail[] @relation("GroupFirst")
-  groupSecond detail[] @relation("GroupSecond")
-  groupLvl1   form_travel[] @relation("GroupFirst")
-  groupLvl2   form_travel[] @relation("GroupSecond")
-  groupLvl1_act   form_activity[] @relation("GroupFirst")
-  groupLvl2_act   form_activity[] @relation("GroupSecond")
-  groupLvl1_admin admin_detail[] @relation("GroupFirst")
-  groupLvl2_admin admin_detail[] @relation("GroupSecond")
-  groupLvl1_form_admin form_admin[] @relation("GroupFirst")
-  groupLvl2_form_admin form_admin[] @relation("GroupSecond")
-  groupUser   admin_detail[] @relation("GroupUser")
-  groupApp    form_admin[] @relation("GroupApp")
+  id                   Int             @id @default(autoincrement())
+  code                 String          @db.VarChar(100)
+  description          String          @db.Text
+  created_at           DateTime        @default(now())
+  updated_at           DateTime?       @default(now())
+  deleted_at           DateTime?
+  projectId            Int?
+  project              project?        @relation(fields: [projectId], references: [id])
+  sedeId               Int?
+  sede                 sede?           @relation(fields: [sedeId], references: [id])
+  group_user           group_user[]
+  groupFirst           detail[]        @relation("GroupFirst")
+  groupSecond          detail[]        @relation("GroupSecond")
+  groupLvl1            form_travel[]   @relation("GroupFirst")
+  groupLvl2            form_travel[]   @relation("GroupSecond")
+  groupLvl1_act        form_activity[] @relation("GroupFirst")
+  groupLvl2_act        form_activity[] @relation("GroupSecond")
+  groupLvl1_admin      admin_detail[]  @relation("GroupFirst")
+  groupLvl2_admin      admin_detail[]  @relation("GroupSecond")
+  groupLvl1_form_admin form_admin[]    @relation("GroupFirst")
+  groupLvl2_form_admin form_admin[]    @relation("GroupSecond")
+  groupUser            admin_detail[]  @relation("GroupUser")
+  groupApp             form_admin[]    @relation("GroupApp")
 }
 
 model role {
@@ -84,66 +89,67 @@ model role {
 }
 
 model user {
-  id              Int          @id @default(autoincrement())
-  document        String       @db.VarChar(100)
-  email           String?      @db.VarChar(100)
-  password        String       @db.VarChar(255)
-  fullname        String       @db.VarChar(255)
-  docType         String?      @db.VarChar(216)
-  positionId      Int?     
-  position        position?   @relation(fields: [positionId], references: [id])
-  created_at      DateTime     @default(now())
-  updated_at      DateTime?    @default(now())
-  deleted_at      DateTime?
-  projectId       Int?
-  project         project?     @relation(fields: [projectId], references: [id])
-  roleId          Int?
-  role            role?        @relation(fields: [roleId], references: [id])
-  tokenOneSignal      String?  
-  hasSignature   Boolean?     @default(false) @db.TinyInt
-  passwordGenerated   Boolean?     @default(false) @db.TinyInt
+  id                Int       @id @default(autoincrement())
+  document          String    @db.VarChar(100)
+  email             String?   @db.VarChar(100)
+  password          String    @db.VarChar(255)
+  fullname          String    @db.VarChar(255)
+  docType           String?   @db.VarChar(216)
+  positionId        Int?
+  position          position? @relation(fields: [positionId], references: [id])
+  created_at        DateTime  @default(now())
+  updated_at        DateTime? @default(now())
+  deleted_at        DateTime?
+  projectId         Int?
+  project           project?  @relation(fields: [projectId], references: [id])
+  roleId            Int?
+  role              role?     @relation(fields: [roleId], references: [id])
+  tokenOneSignal    String?
+  hasSignature      Boolean?  @default(false) @db.TinyInt
+  passwordGenerated Boolean?  @default(false) @db.TinyInt
 
+  mtcLicNumber     String?   @db.VarChar(100)
+  mtcLicIssuedAt   DateTime?
+  mtcLicExpiresAt  DateTime?
+  mineLicNumber    String?   @db.VarChar(100)
+  mineLicIssuedAt  DateTime?
+  mineLicExpiresAt DateTime?
+  medExamIssuedAt  DateTime?
+  medExamExpiresAt DateTime?
+  ceco             String?   @db.VarChar(100)
+  entry_at         DateTime?
+  expires_at       DateTime?
 
-  mtcLicNumber      String?    @db.VarChar(100)
-  mtcLicIssuedAt    DateTime?
-  mtcLicExpiresAt   DateTime?
-  mineLicNumber     String?    @db.VarChar(100)
-  mineLicIssuedAt   DateTime?
-  mineLicExpiresAt  DateTime?
-  medExamIssuedAt   DateTime?
-  medExamExpiresAt  DateTime?
-  ceco              String?    @db.VarChar(100)
-
-
-  travelPrimary   travel[]     @relation("TravelPrimary")
-  travelSecondary travel[]     @relation("TravelSecondary")
-  form_user       form_user[]
-  form_log        form_log[]
-  group_user      group_user[]
-  header          header[]
-  activityPrimary activity[]   @relation("TravelPrimary")
-  activitySecondary activity[] @relation("TravelSecondary")
-  activityRegister activity[]   @relation("ActivityRegister")
+  generic_table      generic_table[]
+  travelPrimary      travel[]             @relation("TravelPrimary")
+  travelSecondary    travel[]             @relation("TravelSecondary")
+  form_user          form_user[]
+  form_log           form_log[]
+  group_user         group_user[]
+  header             header[]
+  activityPrimary    activity[]           @relation("TravelPrimary")
+  activitySecondary  activity[]           @relation("TravelSecondary")
+  activityRegister   activity[]           @relation("ActivityRegister")
   form_activity_user form_activity_user[]
-  travelRegister    travel[]  @relation("TravelRegister")
-  form_admin_user   form_admin_user[]
-  user_log_app user_log_app[]
-  log_record log_record[]
-  form_travel       form_travel[]
-  form_activity     form_activity[]
-  admin_header      admin_header[]
-  form_admin        form_admin[]
-  audit             audit[]
+  travelRegister     travel[]             @relation("TravelRegister")
+  form_admin_user    form_admin_user[]
+  user_log_app       user_log_app[]
+  log_record         log_record[]
+  form_travel        form_travel[]
+  form_activity      form_activity[]
+  admin_header       admin_header[]
+  form_admin         form_admin[]
+  audit              audit[]
 }
 
 model audit {
-  id          Int       @id @default(autoincrement())
-  userId      Int?
-  user        user?     @relation(fields: [userId], references: [id])
-  signature      String?   @db.VarChar(255)
-  created_at  DateTime  @default(now())
-  updated_at  DateTime? @default(now())
-  deleted_at  DateTime?
+  id         Int       @id @default(autoincrement())
+  userId     Int?
+  user       user?     @relation(fields: [userId], references: [id])
+  signature  String?   @db.VarChar(255)
+  created_at DateTime  @default(now())
+  updated_at DateTime? @default(now())
+  deleted_at DateTime?
 }
 
 model position {
@@ -155,14 +161,15 @@ model position {
   deleted_at  DateTime?
   user        user[]
 }
+
 model form {
-  id               Int               @id @default(autoincrement())
-  name             String            @db.VarChar(100)
-  lvl              Int               @default(0)
-  isPhoto          Boolean           @default(true) @db.TinyInt
-  tableNameContent String?           @db.VarChar(100)
-  created_at       DateTime          @default(now())
-  updated_at       DateTime?         @default(now())
+  id               Int             @id @default(autoincrement())
+  name             String          @db.VarChar(100)
+  lvl              Int             @default(0)
+  isPhoto          Boolean         @default(true) @db.TinyInt
+  tableNameContent String?         @db.VarChar(100)
+  created_at       DateTime        @default(now())
+  updated_at       DateTime?       @default(now())
   deleted_at       DateTime?
   content_form     content_form[]
   form_travel      form_travel[]
@@ -190,10 +197,10 @@ model travel {
   dateInit         DateTime?
   dateEnd          DateTime?
   state            Int?
-  plate            String?      @db.VarChar(100)
+  plate            String?       @db.VarChar(100)
   type             String?       @db.VarChar(512)
   userRegisterId   Int?
-  userRegister     user?         @relation("TravelRegister",fields: [userRegisterId],references: [id])
+  userRegister     user?         @relation("TravelRegister", fields: [userRegisterId], references: [id])
   formAssignedQty  Int?
   formProgressQty  Int?
   formApprovQty    Int?
@@ -208,37 +215,37 @@ model travel {
   deleted_at       DateTime?
   projectId        Int?
   project          project?      @relation(fields: [projectId], references: [id])
-  sedeId          Int?
-  sede            sede?         @relation(fields: [sedeId], references: [id])
+  sedeId           Int?
+  sede             sede?         @relation(fields: [sedeId], references: [id])
   form_travel      form_travel[]
 }
 
 model form_travel {
-  id         Int         @id @default(autoincrement())
-  currentLvl Int         @default(0)
-  order      Int?
-  state      Int         @default(0)
-  repeatable Int?        @default(0)
-  mandatory Boolean?    @default(true) @db.TinyInt
-  section   String?     @db.VarChar(100)
-  formId     Int
-  isReactivated Boolean? @default(false) @db.TinyInt
-  attemptNumber   Int?   @default(0)
-  form       form        @relation(fields: [formId], references: [id])
-  travelId   Int
-  travel     travel      @relation(fields: [travelId], references: [id])
-  groupLvl1Id Int?
-  groupLvl1   approver_group?  @relation("GroupFirst",fields: [groupLvl1Id], references: [id])
-  groupLvl2Id Int?
-  groupLvl2   approver_group?  @relation("GroupSecond",fields: [groupLvl2Id], references: [id])
-  userId          Int?
-  user            user?        @relation(fields: [userId], references: [id])
-  part         String?
-  form_user  form_user[]
-  created_at DateTime    @default(now())
-  updated_at DateTime?   @default(now())
-  deleted_at DateTime?
-  isDoublePhoto Boolean? @default(false) @db.TinyInt
+  id            Int             @id @default(autoincrement())
+  currentLvl    Int             @default(0)
+  order         Int?
+  state         Int             @default(0)
+  repeatable    Int?            @default(0)
+  mandatory     Boolean?        @default(true) @db.TinyInt
+  section       String?         @db.VarChar(100)
+  formId        Int
+  isReactivated Boolean?        @default(false) @db.TinyInt
+  attemptNumber Int?            @default(0)
+  form          form            @relation(fields: [formId], references: [id])
+  travelId      Int
+  travel        travel          @relation(fields: [travelId], references: [id])
+  groupLvl1Id   Int?
+  groupLvl1     approver_group? @relation("GroupFirst", fields: [groupLvl1Id], references: [id])
+  groupLvl2Id   Int?
+  groupLvl2     approver_group? @relation("GroupSecond", fields: [groupLvl2Id], references: [id])
+  userId        Int?
+  user          user?           @relation(fields: [userId], references: [id])
+  part          String?
+  form_user     form_user[]
+  created_at    DateTime        @default(now())
+  updated_at    DateTime?       @default(now())
+  deleted_at    DateTime?
+  isDoublePhoto Boolean?        @default(false) @db.TinyInt
 }
 
 model form_user {
@@ -257,259 +264,319 @@ model form_user {
 }
 
 model form_log {
-  id       Int     @id @default(autoincrement())
-  recordId Int?
-  formId   Int?
-  userId   Int
-  user     user    @relation(fields: [userId], references: [id])
-  action   String?
-  created_at      DateTime    @default(now())
-  content  Json?
+  id         Int      @id @default(autoincrement())
+  recordId   Int?
+  formId     Int?
+  userId     Int
+  user       user     @relation(fields: [userId], references: [id])
+  action     String?
+  created_at DateTime @default(now())
+  content    Json?
 }
 
-model group_user{
-  id              Int          @id @default(autoincrement())
+model group_user {
+  id              Int             @id @default(autoincrement())
   userId          Int?
-  user            user?         @relation(fields: [userId], references: [id])
+  user            user?           @relation(fields: [userId], references: [id])
   approverGroupId Int?
   approver_group  approver_group? @relation(fields: [approverGroupId], references: [id])
-  created_at      DateTime     @default(now())
-  updated_at      DateTime?    
+  created_at      DateTime        @default(now())
+  updated_at      DateTime?
   deleted_at      DateTime?
 }
 
-model header{
-  id          Int       @id @default(autoincrement())
-  projectId   Int?
-  type        String?   @db.VarChar(512)
-  project     project?  @relation(fields: [projectId], references: [id])
-  sedeId      Int?
-  sede        sede?     @relation(fields: [sedeId], references: [id])
+model header {
+  id             Int       @id @default(autoincrement())
+  projectId      Int?
+  type           String?   @db.VarChar(512)
+  project        project?  @relation(fields: [projectId], references: [id])
+  sedeId         Int?
+  sede           sede?     @relation(fields: [sedeId], references: [id])
   userRegisterId Int?
-  userRegister   user?  @relation(fields: [userRegisterId], references: [id])
-  detail      detail[]
-  created_at  DateTime  @default(now())
-  updated_at  DateTime? 
-  deleted_at  DateTime?
+  userRegister   user?     @relation(fields: [userRegisterId], references: [id])
+  detail         detail[]
+  created_at     DateTime  @default(now())
+  updated_at     DateTime?
+  deleted_at     DateTime?
 }
 
-model detail{
-  id          Int       @id @default(autoincrement())
-  headerId    Int?
-  header      header?  @relation(fields: [headerId], references: [id])
-  order       Int? 
-  formId      Int?
-  form        form?    @relation(fields: [formId], references: [id])
-  section     String?  @db.VarChar(100)
-  mandatory  Boolean  @default(true) @db.TinyInt
-  repeatable Boolean  @default(false) @db.TinyInt
-  groupLvl1Id Int?
-  groupLvl1   approver_group?  @relation("GroupFirst",fields: [groupLvl1Id], references: [id])
-  groupLvl2Id Int?
-  groupLvl2   approver_group?  @relation("GroupSecond",fields: [groupLvl2Id], references: [id])
-  created_at  DateTime  @default(now())
-  updated_at  DateTime? 
-  deleted_at  DateTime?
-  isPersonal  Boolean? @default(false) @db.TinyInt
-  isDoublePhoto Boolean? @default(false) @db.TinyInt
+model detail {
+  id            Int             @id @default(autoincrement())
+  headerId      Int?
+  header        header?         @relation(fields: [headerId], references: [id])
+  order         Int?
+  formId        Int?
+  form          form?           @relation(fields: [formId], references: [id])
+  section       String?         @db.VarChar(100)
+  mandatory     Boolean         @default(true) @db.TinyInt
+  repeatable    Boolean         @default(false) @db.TinyInt
+  groupLvl1Id   Int?
+  groupLvl1     approver_group? @relation("GroupFirst", fields: [groupLvl1Id], references: [id])
+  groupLvl2Id   Int?
+  groupLvl2     approver_group? @relation("GroupSecond", fields: [groupLvl2Id], references: [id])
+  created_at    DateTime        @default(now())
+  updated_at    DateTime?
+  deleted_at    DateTime?
+  isPersonal    Boolean?        @default(false) @db.TinyInt
+  isDoublePhoto Boolean?        @default(false) @db.TinyInt
 }
 
 model activity {
-  id               Int           @id @default(autoincrement())
+  id               Int             @id @default(autoincrement())
   code             String?
   dateInit         DateTime?
   dateEnd          DateTime?
-  route           String?
-  plate           String?        @db.VarChar(100)
+  route            String?
+  plate            String?         @db.VarChar(100)
   state            Int?
-  type             String?       @db.VarChar(512)
+  type             String?         @db.VarChar(512)
   userRegisterId   Int?
-  userRegister     user?         @relation("ActivityRegister",fields: [userRegisterId],references: [id])
+  userRegister     user?           @relation("ActivityRegister", fields: [userRegisterId], references: [id])
   formAssignedQty  Int?
   formProgressQty  Int?
   formApprovQty    Int?
-  stopQty          Int?          @default(0)
+  stopQty          Int?            @default(0)
   primaryPilotId   Int?
-  primaryPilot     user?         @relation("TravelPrimary", fields: [primaryPilotId], references: [id])
+  primaryPilot     user?           @relation("TravelPrimary", fields: [primaryPilotId], references: [id])
   secondaryPilotId Int?
-  secondaryPilot   user?         @relation("TravelSecondary", fields: [secondaryPilotId], references: [id])
-  created_at       DateTime      @default(now())
-  updated_at       DateTime?     @default(now())
+  secondaryPilot   user?           @relation("TravelSecondary", fields: [secondaryPilotId], references: [id])
+  created_at       DateTime        @default(now())
+  updated_at       DateTime?       @default(now())
   deleted_at       DateTime?
   projectId        Int?
-  project          project?      @relation(fields: [projectId], references: [id])
-  sedeId          Int?
-  sede            sede?         @relation(fields: [sedeId], references: [id])
+  project          project?        @relation(fields: [projectId], references: [id])
+  sedeId           Int?
+  sede             sede?           @relation(fields: [sedeId], references: [id])
   form_activity    form_activity[]
 }
 
 model form_activity {
-  id         Int         @id @default(autoincrement())
-  currentLvl Int         @default(0)
-  state      Int         @default(0)
-  order      Int?
-  repeatable Int?        @default(0) 
-  mandatory Boolean?    @default(true) @db.TinyInt
-  section   String?     @db.VarChar(100)
-  attemptNumber   Int?   @default(0)
-  formId     Int
-  form       form        @relation(fields: [formId], references: [id])
-  activityId   Int?
-  activity     activity?      @relation(fields: [activityId], references: [id])
-  isReactivated Boolean? @default(false) @db.TinyInt
-  groupLvl1Id Int?
-  groupLvl1   approver_group?  @relation("GroupFirst",fields: [groupLvl1Id], references: [id])
-  groupLvl2Id Int?
-  groupLvl2   approver_group?  @relation("GroupSecond",fields: [groupLvl2Id], references: [id])
-  created_at DateTime    @default(now())
-  updated_at DateTime?   @default(now())
-  deleted_at DateTime?
-  isDoublePhoto Boolean? @default(false) @db.TinyInt
-  userId          Int?
-  user            user?        @relation(fields: [userId], references: [id])
-  part         String?
+  id                 Int                  @id @default(autoincrement())
+  currentLvl         Int                  @default(0)
+  state              Int                  @default(0)
+  order              Int?
+  repeatable         Int?                 @default(0)
+  mandatory          Boolean?             @default(true) @db.TinyInt
+  section            String?              @db.VarChar(100)
+  attemptNumber      Int?                 @default(0)
+  formId             Int
+  form               form                 @relation(fields: [formId], references: [id])
+  activityId         Int?
+  activity           activity?            @relation(fields: [activityId], references: [id])
+  isReactivated      Boolean?             @default(false) @db.TinyInt
+  groupLvl1Id        Int?
+  groupLvl1          approver_group?      @relation("GroupFirst", fields: [groupLvl1Id], references: [id])
+  groupLvl2Id        Int?
+  groupLvl2          approver_group?      @relation("GroupSecond", fields: [groupLvl2Id], references: [id])
+  created_at         DateTime             @default(now())
+  updated_at         DateTime?            @default(now())
+  deleted_at         DateTime?
+  isDoublePhoto      Boolean?             @default(false) @db.TinyInt
+  userId             Int?
+  user               user?                @relation(fields: [userId], references: [id])
+  part               String?
   form_activity_user form_activity_user[]
 }
 
 model form_activity_user {
-  id              Int         @id @default(autoincrement())
-  formActivityId    Int?
-  form_activity     form_activity? @relation(fields: [formActivityId], references: [id])
+  id              Int            @id @default(autoincrement())
+  formActivityId  Int?
+  form_activity   form_activity? @relation(fields: [formActivityId], references: [id])
   userId          Int
-  user            user        @relation(fields: [userId], references: [id])
-  approval_status String?     @db.VarChar(16)
-  comment         String?     @db.Text
-  attemptNumber   Int?        
+  user            user           @relation(fields: [userId], references: [id])
+  approval_status String?        @db.VarChar(16)
+  comment         String?        @db.Text
+  attemptNumber   Int?
   content         Json?
-  created_at      DateTime    @default(now())
-  updated_at      DateTime?   @default(now())
+  created_at      DateTime       @default(now())
+  updated_at      DateTime?      @default(now())
   deleted_at      DateTime?
 }
 
-model admin_header{
-  id         Int       @id @default(autoincrement())
-  projectId Int?
-  project   project?  @relation(fields: [projectId], references: [id])
-  sedeId   Int?
-  sede     sede?     @relation(fields: [sedeId], references: [id])
+model admin_header {
+  id             Int            @id @default(autoincrement())
+  projectId      Int?
+  project        project?       @relation(fields: [projectId], references: [id])
+  sedeId         Int?
+  sede           sede?          @relation(fields: [sedeId], references: [id])
   userRegisterId Int?
-  userRegister   user?  @relation(fields: [userRegisterId], references: [id])
-  created_at DateTime  @default(now())
-  updated_at DateTime? 
-  deleted_at DateTime?
-  isActive Boolean? @default(true) @db.TinyInt
-  admin_detail admin_detail[]
-  form_admin   form_admin[]
+  userRegister   user?          @relation(fields: [userRegisterId], references: [id])
+  created_at     DateTime       @default(now())
+  updated_at     DateTime?
+  deleted_at     DateTime?
+  isActive       Boolean?       @default(true) @db.TinyInt
+  admin_detail   admin_detail[]
+  form_admin     form_admin[]
 }
 
-model admin_detail{
-  id         Int       @id @default(autoincrement())
-  admin_headerId   Int?
-  admin_header     admin_header?  @relation(fields: [admin_headerId], references: [id])
-  formId     Int?
-  form       form?    @relation(fields: [formId], references: [id])
-  isRequiredApproved Boolean? @default(false) @db.TinyInt
-  groupLvl1Id Int?
-  groupLvl1   approver_group?  @relation("GroupFirst",fields: [groupLvl1Id], references: [id])
-  groupLvl2Id Int?
-  groupLvl2   approver_group?  @relation("GroupSecond",fields: [groupLvl2Id], references: [id])
-  groupUsersId Int?
-  groupUsers approver_group? @relation("GroupUser", fields: [groupUsersId], references: [id])
-  created_at DateTime  @default(now())
-  updated_at DateTime? 
-  deleted_at DateTime?
+model admin_detail {
+  id                 Int             @id @default(autoincrement())
+  admin_headerId     Int?
+  admin_header       admin_header?   @relation(fields: [admin_headerId], references: [id])
+  formId             Int?
+  form               form?           @relation(fields: [formId], references: [id])
+  isRequiredApproved Boolean?        @default(false) @db.TinyInt
+  groupLvl1Id        Int?
+  groupLvl1          approver_group? @relation("GroupFirst", fields: [groupLvl1Id], references: [id])
+  groupLvl2Id        Int?
+  groupLvl2          approver_group? @relation("GroupSecond", fields: [groupLvl2Id], references: [id])
+  groupUsersId       Int?
+  groupUsers         approver_group? @relation("GroupUser", fields: [groupUsersId], references: [id])
+  created_at         DateTime        @default(now())
+  updated_at         DateTime?
+  deleted_at         DateTime?
 }
 
 model admin {
-  id                Int     @id @default(autoincrement())
-  projectId         Int?
-  project           project?      @relation(fields: [projectId], references: [id])
-  sedeId            Int?
-  sede              sede?         @relation(fields: [sedeId], references: [id])
-  dateGenerated     DateTime  @default(now())
-  qtyTotal          Int?
-  qtyApproved       Int?
-  status            String?       @db.VarChar(100)
-  created_at        DateTime      @default(now())
-  updated_at        DateTime?     @default(now())
-  deleted_at        DateTime?
-  form_admin        form_admin[]
+  id            Int          @id @default(autoincrement())
+  projectId     Int?
+  project       project?     @relation(fields: [projectId], references: [id])
+  sedeId        Int?
+  sede          sede?        @relation(fields: [sedeId], references: [id])
+  dateGenerated DateTime     @default(now())
+  qtyTotal      Int?
+  qtyApproved   Int?
+  status        String?      @db.VarChar(100)
+  created_at    DateTime     @default(now())
+  updated_at    DateTime?    @default(now())
+  deleted_at    DateTime?
+  form_admin    form_admin[]
 }
 
-model form_admin{
-  id         Int       @id @default(autoincrement())
-  adminId     Int?
-  admin        admin?             @relation(fields: [adminId], references: [id])
-  isRequiredApproved Boolean? @default(false) @db.TinyInt
-  groupLvl1Id Int?
-  groupLvl1   approver_group?  @relation("GroupFirst",fields: [groupLvl1Id], references: [id])
-  groupLvl2Id Int?
-  groupLvl2   approver_group?  @relation("GroupSecond",fields: [groupLvl2Id], references: [id])
-  state     Int?      @default(0)
-  currentLvl Int?     @default(0)
-  attemptNumber   Int?   @default(0)
-  groupAppId    Int?
-  groupApp      approver_group?  @relation("GroupApp",fields: [groupAppId], references: [id])
-  formId     Int?
-  form       form?    @relation(fields: [formId], references: [id])
-  userId     Int?
-  user      user?        @relation(fields: [userId], references: [id])
-  admin_headerId   Int?
-  admin_header     admin_header?  @relation(fields: [admin_headerId], references: [id])
-  created_at DateTime  @default(now())
-  updated_at DateTime? 
-  deleted_at DateTime?
-  isAutomatic Boolean? @default(true) @db.TinyInt
-  form_admin_user form_admin_user[]
+model form_admin {
+  id                 Int               @id @default(autoincrement())
+  adminId            Int?
+  admin              admin?            @relation(fields: [adminId], references: [id])
+  isRequiredApproved Boolean?          @default(false) @db.TinyInt
+  groupLvl1Id        Int?
+  groupLvl1          approver_group?   @relation("GroupFirst", fields: [groupLvl1Id], references: [id])
+  groupLvl2Id        Int?
+  groupLvl2          approver_group?   @relation("GroupSecond", fields: [groupLvl2Id], references: [id])
+  state              Int?              @default(0)
+  currentLvl         Int?              @default(0)
+  attemptNumber      Int?              @default(0)
+  groupAppId         Int?
+  groupApp           approver_group?   @relation("GroupApp", fields: [groupAppId], references: [id])
+  formId             Int?
+  form               form?             @relation(fields: [formId], references: [id])
+  userId             Int?
+  user               user?             @relation(fields: [userId], references: [id])
+  admin_headerId     Int?
+  admin_header       admin_header?     @relation(fields: [admin_headerId], references: [id])
+  created_at         DateTime          @default(now())
+  updated_at         DateTime?
+  deleted_at         DateTime?
+  isAutomatic        Boolean?          @default(true) @db.TinyInt
+  form_admin_user    form_admin_user[]
 }
 
-model form_admin_user{
-  id         Int       @id @default(autoincrement())
-  formAdminId Int?
-  form_admin  form_admin?  @relation(fields: [formAdminId], references: [id])
-  userId     Int?
-  user       user?        @relation(fields: [userId], references: [id])
+model form_admin_user {
+  id              Int         @id @default(autoincrement())
+  formAdminId     Int?
+  form_admin      form_admin? @relation(fields: [formAdminId], references: [id])
+  userId          Int?
+  user            user?       @relation(fields: [userId], references: [id])
   approval_status String?     @db.VarChar(16)
   comment         String?     @db.Text
   content         Json?
-  attemptNumber   Int?    @default(0)
-  created_at DateTime  @default(now())
-  updated_at DateTime? 
-  deleted_at DateTime?
+  attemptNumber   Int?        @default(0)
+  created_at      DateTime    @default(now())
+  updated_at      DateTime?
+  deleted_at      DateTime?
 }
 
-model user_log_app{
+model user_log_app {
   id         Int       @id @default(autoincrement())
   userId     Int?
   user       user?     @relation(fields: [userId], references: [id])
   version    String?   @db.VarChar(100)
   created_at DateTime  @default(now())
-  updated_at DateTime? 
+  updated_at DateTime?
   deleted_at DateTime?
 }
 
 model log_record {
-  id         Int     @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   typeFormat String
   userId     Int
   user       user?     @relation(fields: [userId], references: [id])
   recordId   String
   action     String
-  oldBody    String?  @db.Text
-  body       String  @db.Text
-  createdAt  DateTime @default(now())
-  updated_at DateTime? 
+  oldBody    String?   @db.Text
+  body       String    @db.Text
+  createdAt  DateTime  @default(now())
+  updated_at DateTime?
   deleted_at DateTime?
 }
 
 model generic_table {
-  id          Int       @id @default(autoincrement())
-  tableName   String    @db.VarChar(100)
-  name        String    @db.VarChar(100)
-  projectId   Int?
-  isActive    Boolean?   @default(true) @db.TinyInt
-  deleted_at  DateTime?
-  created_at  DateTime  @default(now())
-  updated_at  DateTime? @default(now())
-  project     project?  @relation(fields: [projectId], references: [id])
+  id         Int       @id @default(autoincrement())
+  tableName  String    @db.VarChar(100)
+  name       String    @db.VarChar(100)
+  isActive   Boolean?  @default(true) @db.TinyInt
+  deleted_at DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime? @default(now())
+  projectId  Int?
+  project    project?  @relation(fields: [projectId], references: [id])
+  userId     Int?
+  user       user?     @relation(fields: [userId], references: [id])
+}
+
+model unit {
+  id                      Int             @id @default(autoincrement())
+  name                    String          @db.VarChar(100)
+  origin                  String          @db.VarChar(100)
+  plate_number            String          @db.VarChar(100)
+  vehicle_fleet           Boolean?        @db.TinyInt
+  km_traveled             Int?
+  year                    Int? 
+  seats                   Int?
+  entry_at                DateTime?
+  axles                   Int?
+  brand                   String          @db.VarChar(100)
+  model                   String          @db.VarChar(100)
+  unit_serial_number              String          @db.VarChar(100)
+  unit_chassis_number       String          @db.VarChar(100)
+  engine_serial_number              String          @db.VarChar(100)
+  insured_seats              Int?
+  tuc                        String          @db.VarChar(100)
+  manufacturing_year               Int? 
+  chassis_number              String          @db.VarChar(100)
+  contract_expires_at           DateTime?
+  
+  isActive                  Boolean?        @default(true) @db.TinyInt
+
+  deleted_at    DateTime?
+  created_at    DateTime        @default(now())
+  updated_at    DateTime?       @default(now())
+  unit_document unit_document[]
+}
+
+model unit_document {
+  id              Int            @id @default(autoincrement())
+  description     String         @db.VarChar(300)
+  url_document    String         @db.Text
+  isActive        Boolean?       @default(true) @db.TinyInt
+  issued_at       DateTime?
+  expires_at      DateTime?
+  has_expiration  Boolean?       @default(true) @db.TinyInt
+
+  deleted_at      DateTime?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime?      @default(now())
+  document_typeId Int?
+  document_type   document_type? @relation(fields: [document_typeId], references: [id])
+  unitId          Int?
+  unit            unit?          @relation(fields: [unitId], references: [id])
+}
+
+model document_type {
+  id            Int             @id @default(autoincrement())
+  name          String          @db.VarChar(100)
+  isActive      Boolean?        @default(true) @db.TinyInt
+  deleted_at    DateTime?
+  created_at    DateTime        @default(now())
+  updated_at    DateTime?       @default(now())
+  unit_document unit_document[]
 }
