@@ -1,13 +1,14 @@
-tipo de documento mantenedor
-nombre
-color
-
-documentos de usuario
-tipo
-nombre
-documento pdf
-fecha
-
-registros digitales con rango establecido de un mes
-
-revisar que todo el tema activo inactivo funcione
+{
+  "code": "PROJ-001",
+  "description": "Proyecto de construcción de almacén",
+  "induction": "Inducción general de seguridad",
+  "clientArea": "Logística",
+  "projectId": 123,
+  "sedeId": 10,
+  "generic_tableId": 5,
+  "business_name": "Constructora S.A.C.",
+  "ruc": "20123456789",
+  "business_address": "Av. Industrial 123, Lima",
+  "business_activity": "Construcción y servicios",
+  "employeeQty": 50
+}
