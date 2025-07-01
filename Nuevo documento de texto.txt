@@ -1,0 +1,283 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { CreateUnitDocumentDto } from './dto/create-unit_document.dto';
+import { UpdateUnitDocumentDto } from './dto/update-unit_document.dto';
+import { PrismaService } from 'src/prisma.service';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { GlobalFunctions } from 'src/common/functions/global-function';
+import { ResponseScheme } from 'src/common/interfaces/response.interface';
+import * as fsx from 'fs-extra';
+import * as path from 'path';
+
+@Injectable()
+export class UnitDocumentService {
+
+  constructor(private prisma: PrismaService, private readonly globalFunctions: GlobalFunctions) { }
+  //resp scheme for returning data in response
+  private resp: ResponseScheme = {
+    error: false,
+    message: '',
+    statusCode: 200,
+    data: {},
+  }
+
+  async create(createUnitDocumentDto: CreateUnitDocumentDto, file?: Express.Multer.File, req?: any) {
+    this.resp.data = {}
+    this.resp.error = false
+    try {
+      this.resp.statusCode = 200;
+
+      let url_document: string | null = null;
+
+      if (file) {
+        if (file && file.mimetype !== 'application/pdf') {
+          throw new BadRequestException('Solo se permiten archivos PDF');
+        }
+        const timestamp = Date.now();
+        const fileName = `unit_document_${timestamp}.pdf`;
+        const uploadFolderPath = path.join(__dirname, '..', '..', 'public', 'uploads', 'unit_document');
+        const filePath = path.join(uploadFolderPath, fileName);
+
+        await fsx.ensureDir(uploadFolderPath);
+        await fsx.writeFile(filePath, file.buffer);
+        url_document = `https://simplexgo.cruzdelsur.com.pe:4000/uploads/unit_document/${fileName}`;
+      }
+      const createdUnitDocument = await this.prisma.unit_document.create({
+        data: {
+          description: createUnitDocumentDto.description,
+          url_document: url_document,
+          issued_at: createUnitDocumentDto.issued_at,
+          expires_at: createUnitDocumentDto.expires_at,
+          has_expiration: createUnitDocumentDto.has_expiration,
+          document_typeId: createUnitDocumentDto.document_typeId,
+          unitId: createUnitDocumentDto.unitId,
+        }
+      })
+
+      this.resp.message = "Documento de unidad creado";
+      this.resp.data = createdUnitDocument;
+
+    } catch (e) {
+      this.resp.error = true
+      this.resp.statusCode = 500;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async findAll(paginationDto: PaginationDto) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      var {
+        page = 1,
+        limit = 10,
+        order = "desc",
+        sort = "id",
+        filter = "[]",
+
+      } = paginationDto;
+
+      const objectFilter = await this.globalFunctions.getObjectFilterGrid(
+        sort,
+        order,
+        page,
+        limit,
+        filter
+      );
+
+      const offset = await this.globalFunctions.getOffsetByPage(page, limit);
+      const data = await this.prisma.unit_document.aggregate({
+        _count: {
+          id: true,
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains
+        },
+      });
+      const { _count } = data;
+      const pages = await this.globalFunctions.getCantPages(_count.id, limit);
+      const responseFilter = await this.globalFunctions.getResponseFilter(
+        limit,
+        order,
+        page,
+        sort,
+        pages,
+        _count.id
+      );
+
+      const rows = await this.prisma.unit_document.findMany({
+        select: {
+          id: true,
+          description: true,
+          url_document: true,
+          issued_at: true,
+          expires_at: true,
+          has_expiration: true,
+          document_type: {
+            select: {
+              id: true,
+              name: true,
+            }
+          },
+          unit: {
+            select: {
+              id: true,
+              name: true,
+              origin: true,
+              plate_number: true,
+              vehicle_fleet: true,
+              km_traveled: true,
+              year: true,
+              seats: true,
+              entry_at: true,
+              axles: true,
+              brand: true,
+              model: true,
+              unit_serial_number: true,
+              unit_chassis_number: true,
+              engine_serial_number: true,
+              insured_seats: true,
+              tuc: true,
+              manufacturing_year: true,
+              chassis_number: true,
+              contract_expires_at: true,
+              isActive: true,
+            }
+          }
+        },
+        where: {
+          deleted_at: null,
+          AND: objectFilter.contains,
+
+        },
+        skip: offset,
+        take: objectFilter.cant,
+        orderBy: objectFilter.order,
+      });
+      this.resp.data = {
+        rows, responseFilter
+      }
+    } catch (e) {
+      console.log({ error: e })
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+      this.resp.statusCode = 400;
+    }
+    return this.resp
+  }
+
+  async findOne(id: number) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+
+      const unit_document = await this.prisma.unit_document.findUnique({
+        where: {
+          id: id
+        }
+      });
+
+      if (!unit_document) {
+        throw new BadRequestException('Documento de unidad no existente');
+      }
+
+      this.resp.message = "";
+      this.resp.data = unit_document;
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async update(id: number, updateUnitDocumentDto: UpdateUnitDocumentDto, file?: Express.Multer.File, req?: any) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      const unit_documentFind = await this.prisma.unit_document.findUnique({
+        where: {
+          id: id
+        }
+      });
+      if (!unit_documentFind)
+        throw new BadRequestException('Documento de unidad no existente');
+
+
+      let url_document = unit_document.url_document;
+
+      if (file) {
+        if (file && file.mimetype !== 'application/pdf') {
+          throw new BadRequestException('Solo se permiten archivos PDF');
+        }
+
+        if (url_document && url_document.includes('/uploads/unit_document/')) {
+          const oldFileName = url_document.split('/uploads/unit_document/')[1];
+          const oldFilePath = path.join(__dirname, '..', '..', 'public', 'uploads', 'unit_document', oldFileName);
+          if (await fsx.pathExists(oldFilePath)) {
+            await fsx.remove(oldFilePath);
+          }
+        }
+
+        const timestamp = Date.now();
+        const fileName = `unit_document_${timestamp}.pdf`;
+        const uploadFolderPath = path.join(__dirname, '..', '..', 'public', 'uploads', 'unit_document');
+        const filePath = path.join(uploadFolderPath, fileName);
+
+        await fsx.ensureDir(uploadFolderPath);
+        await fsx.writeFile(filePath, file.buffer);
+
+        url_document = `https://simplexgo.cruzdelsur.com.pe:4000/uploads/unit_document/${fileName}`;
+      }
+
+      const updatedUnit_document = await this.prisma.unit_document.update({
+        where: {
+          id: id
+        },
+        data: {
+          description: updateUnitDocumentDto.description,
+          url_document: url_document,
+          issued_at: updateUnitDocumentDto.issued_at,
+          expires_at: updateUnitDocumentDto.expires_at,
+          has_expiration: updateUnitDocumentDto.has_expiration,
+          document_typeId: updateUnitDocumentDto.document_typeId,
+          unitId: updateUnitDocumentDto.unitId,
+          updated_at: new Date()
+        }
+      });
+      this.resp.message = "Documento de unidad actualizado";
+      this.resp.data = updatedUnit_document;
+    } catch (e) {
+      this.resp.error = true;
+      this.resp.statusCode = 500;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+
+  async remove(id: number) {
+    try {
+      this.resp.data = {}
+      this.resp.error = false;
+      this.resp.statusCode = 200;
+      await this.prisma.unit_document.update({
+        where: {
+          id: id
+        },
+        data: {
+          deleted_at: new Date()
+        }
+      });
+      this.resp.message = "Documento de unidad eliminado";
+    } catch (e) {
+      this.resp.statusCode = 500;
+      this.resp.error = true;
+      this.resp.message = JSON.stringify(e);
+    }
+    return this.resp;
+  }
+}
